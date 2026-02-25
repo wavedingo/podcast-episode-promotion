@@ -12,7 +12,7 @@ export function EpisodeList({ episodes }: { episodes: Episode[] }) {
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+    <div className="flex flex-col gap-2">
       {episodes.map((episode) => (
         <EpisodeCard key={episode.id} episode={episode} />
       ))}

@@ -30,6 +30,14 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
                 <div className="text-xs text-slate-500">Episode Promoter</div>
               </div>
             </Link>
+            <nav className="flex items-center gap-4">
+              <Link
+                href="/settings"
+                className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+              >
+                Settings
+              </Link>
+            </nav>
           </div>
         </header>
 

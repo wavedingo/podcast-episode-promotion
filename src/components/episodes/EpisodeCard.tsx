@@ -23,29 +23,41 @@ function statusBadge(status: Episode['status']) {
 export function EpisodeCard({ episode }: { episode: Episode }) {
   return (
     <Link href={`/episodes/${episode.id}`}>
-      <div className="bg-slate-800 border border-slate-700 rounded-lg p-5 hover:border-pink-800 hover:bg-slate-750 transition-all cursor-pointer group">
-        <div className="flex items-start justify-between gap-2 mb-3">
-          {statusBadge(episode.status)}
-          <span className="text-xs text-slate-500">{formatDate(episode.publishDate)}</span>
+      <div className="flex items-center gap-5 bg-slate-800 border border-slate-700 rounded-lg px-5 py-4 hover:border-pink-800 transition-all cursor-pointer group">
+        {/* Episode number */}
+        <div className="w-12 shrink-0 text-center">
+          {episode.episodeNumber !== null ? (
+            <span className="text-2xl font-bold text-slate-500 group-hover:text-pink-400 transition-colors tabular-nums">
+              {episode.episodeNumber}
+            </span>
+          ) : (
+            <span className="text-lg font-bold text-slate-700">—</span>
+          )}
         </div>
 
-        <h2 className="text-lg font-semibold text-slate-100 mb-2 group-hover:text-pink-300 transition-colors">
-          {episode.name}
-        </h2>
+        {/* Divider */}
+        <div className="w-px self-stretch bg-slate-700 shrink-0" />
 
-        {episode.teaserCopy && (
-          <p className="text-sm text-slate-400 line-clamp-2">{episode.teaserCopy}</p>
-        )}
-
-        {episode.scriptAsset && (
-          <div className="mt-3 flex items-center gap-1.5 text-xs text-slate-500">
-            <span>📄</span>
-            <span>Script attached</span>
+        {/* Main content */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            {statusBadge(episode.status)}
+            <span className="text-xs text-slate-500">{formatDate(episode.publishDate)}</span>
+            {episode.scriptAsset && (
+              <span className="text-xs text-slate-500">· Script attached</span>
+            )}
           </div>
-        )}
+          <h2 className="text-base font-semibold text-slate-100 truncate group-hover:text-pink-300 transition-colors">
+            {episode.name}
+          </h2>
+          {episode.teaserCopy && (
+            <p className="text-sm text-slate-400 truncate mt-0.5">{episode.teaserCopy}</p>
+          )}
+        </div>
 
-        <div className="mt-4 text-xs text-pink-500 group-hover:text-pink-400 transition-colors">
-          Generate promotion content →
+        {/* CTA arrow */}
+        <div className="shrink-0 text-sm text-slate-600 group-hover:text-pink-400 transition-colors">
+          →
         </div>
       </div>
     </Link>

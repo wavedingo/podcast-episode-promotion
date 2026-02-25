@@ -21,9 +21,9 @@ async function getEpisodes() {
     .map(transformMondayItem)
     .filter((e) => e.status !== 'published')
     .sort((a, b) => {
-      if (!a.publishDate) return 1;
-      if (!b.publishDate) return -1;
-      return a.publishDate.localeCompare(b.publishDate);
+      if (a.episodeNumber === null) return 1;
+      if (b.episodeNumber === null) return -1;
+      return a.episodeNumber - b.episodeNumber;
     });
 }
 

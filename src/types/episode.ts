@@ -24,6 +24,7 @@ export interface MondayItem {
 export interface Episode {
   id: string;
   name: string;
+  episodeNumber: number | null;
   publishDate: string | null;
   teaserCopy: string | null;
   scriptAsset: MondayAsset | null;

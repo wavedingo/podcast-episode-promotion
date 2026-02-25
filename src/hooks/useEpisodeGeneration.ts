@@ -3,6 +3,7 @@
 import { useState, useCallback } from 'react';
 import type { EpisodeGenerationState } from '@/types/generation';
 import type { Episode } from '@/types/episode';
+import type { PromptLayers } from '@/lib/promptDefaults';
 
 const INITIAL_STATE = (episodeId: string): EpisodeGenerationState => ({
   episodeId,
@@ -22,7 +23,7 @@ export function useEpisodeGeneration(episode: Episode) {
     setState(INITIAL_STATE(episode.id));
   }, [episode.id]);
 
-  const generate = useCallback(async () => {
+  const generate = useCallback(async (positivePrompt?: string, negativePrompt?: string, episodeReferenceImages?: string[], promptLayers?: PromptLayers) => {
     setState((prev) => ({ ...prev, status: 'researching', error: null }));
 
     try {
@@ -68,6 +69,8 @@ export function useEpisodeGeneration(episode: Episode) {
           teaserCopy: episode.teaserCopy,
           researchSummary: research.summary,
           platforms: ['instagram', 'facebook', 'twitter', 'tiktok'],
+          positivePrompt,
+          negativePrompt,
         }),
       });
 
@@ -85,6 +88,10 @@ export function useEpisodeGeneration(episode: Episode) {
           episodeId: episode.id,
           episodeName: episode.name,
           researchSummary: research.summary,
+          positivePrompt,
+          negativePrompt,
+          episodeReferenceImages,
+          promptLayers,
         }),
       });
 

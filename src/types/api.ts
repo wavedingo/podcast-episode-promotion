@@ -1,4 +1,5 @@
 import type { SocialPlatform } from './generation';
+import type { PromptLayers } from '@/lib/promptDefaults';
 
 export interface ApiResponse<T> {
   data: T | null;
@@ -19,10 +20,18 @@ export interface SocialGenerationRequest {
   teaserCopy: string | null;
   researchSummary: string;
   platforms: SocialPlatform[];
+  positivePrompt?: string;
+  negativePrompt?: string;
 }
 
 export interface ThumbnailRequest {
   episodeId: string;
   episodeName: string;
   researchSummary: string;
+  positivePrompt?: string;
+  negativePrompt?: string;
+  /** Base64 data URLs of per-episode reference images (e.g. guest photos) */
+  episodeReferenceImages?: string[];
+  /** Overrides for the base prompt layers (from settings page) */
+  promptLayers?: PromptLayers;
 }

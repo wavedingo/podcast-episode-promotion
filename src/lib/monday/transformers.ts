@@ -2,6 +2,7 @@ import type { MondayItem, MondayAsset, Episode } from '@/types/episode';
 
 function getColumnMapping() {
   return {
+    episodeNumber: process.env.MONDAY_COLUMN_EPISODE_NUMBER ?? '',
     publishDate: process.env.MONDAY_COLUMN_PUBLISH_DATE ?? '',
     teaserCopy: process.env.MONDAY_COLUMN_TEASER_COPY ?? '',
     status: process.env.MONDAY_COLUMN_STATUS ?? '',
@@ -19,6 +20,7 @@ function mapStatusLabel(label: string | null | undefined): Episode['status'] {
 export function transformMondayItem(item: MondayItem): Episode {
   const colMap = getColumnMapping();
 
+  const episodeNumberCol = item.column_values.find((c) => c.id === colMap.episodeNumber);
   const publishDateCol = item.column_values.find((c) => c.id === colMap.publishDate);
   const teaserCol = item.column_values.find((c) => c.id === colMap.teaserCopy);
   const statusCol = item.column_values.find((c) => c.id === colMap.status);
@@ -38,9 +40,14 @@ export function transformMondayItem(item: MondayItem): Episode {
       ['doc', 'docx'].includes(a.file_extension.toLowerCase())
     ) ?? null;
 
+  const episodeNumber = episodeNumberCol?.text
+    ? parseInt(episodeNumberCol.text, 10) || null
+    : null;
+
   return {
     id: item.id,
     name: item.name,
+    episodeNumber,
     publishDate,
     teaserCopy: teaserCol?.text ?? null,
     scriptAsset,

@@ -35,7 +35,15 @@ Platform rules:
 - twitter: max 275 characters total, punchy and intriguing, 1-2 hashtags max
 - tiktok: hook-style opener ("POV:", "Wait until you hear...", "The case that..."), 100-200 characters
 
-Each post must be unique with a different angle or hook. Never use clickbait or sensationalism.`;
+Each post must be unique with a different angle or hook. Never use clickbait or sensationalism.${
+    params.positivePrompt?.trim()
+      ? `\n\nEpisode-specific emphasis: ${params.positivePrompt.trim()}`
+      : ''
+  }${
+    params.negativePrompt?.trim()
+      ? `\n\nExplicitly avoid referencing or highlighting: ${params.negativePrompt.trim()}`
+      : ''
+  }`;
 }
 
 type RawPlatformMap = Record<string, string[]>;
