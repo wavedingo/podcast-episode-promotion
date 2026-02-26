@@ -9,11 +9,16 @@ function getColumnMapping() {
   };
 }
 
+const EXCLUDED_STATUSES = new Set(['', 'default', 'script draft', 'script review', 'research']);
+
 function mapStatusLabel(label: string | null | undefined): Episode['status'] {
-  if (!label) return 'draft';
-  const lower = label.toLowerCase();
-  if (lower.includes('upcoming') || lower.includes('scheduled')) return 'upcoming';
-  if (lower.includes('published') || lower.includes('done') || lower.includes('live')) return 'published';
+  if (!label) return 'excluded';
+  const lower = label.toLowerCase().trim();
+  if (EXCLUDED_STATUSES.has(lower)) return 'excluded';
+  // archived: 'live', 'live paid', 'live free', etc.
+  if (lower === 'live' || lower.startsWith('live ')) return 'archived';
+  if (lower === 'ready to publish' || lower.includes('upcoming') || lower.includes('scheduled')) return 'upcoming';
+  if (lower.includes('published') || lower.includes('done')) return 'published';
   return 'draft';
 }
 

@@ -32,6 +32,12 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
             </Link>
             <nav className="flex items-center gap-4">
               <Link
+                href="/archive"
+                className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+              >
+                Archive
+              </Link>
+              <Link
                 href="/settings"
                 className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
               >

@@ -12,10 +12,19 @@ function statusBadge(status: Episode['status']) {
     upcoming: 'bg-purple-900/50 text-purple-300 border-purple-700',
     draft: 'bg-slate-800 text-slate-400 border-slate-600',
     published: 'bg-green-900/50 text-green-300 border-green-700',
+    archived: 'bg-amber-900/40 text-amber-300 border-amber-700',
+    excluded: 'bg-slate-800 text-slate-600 border-slate-700',
+  };
+  const labels: Record<Episode['status'], string> = {
+    upcoming: 'Upcoming',
+    draft: 'Draft',
+    published: 'Published',
+    archived: 'Archived',
+    excluded: 'Excluded',
   };
   return (
     <span className={`text-xs px-2 py-0.5 rounded border ${classes[status]} uppercase tracking-wide`}>
-      {status}
+      {labels[status]}
     </span>
   );
 }

@@ -16,6 +16,27 @@ All three steps can run as a single "Generate All Content" flow, or the thumbnai
 
 ---
 
+## Data Flow
+
+```
+Monday.com board
+      │
+      ▼
+  Episode list (name, publish date, teaser, optional .docx script)
+      │
+      ▼
+  Perplexity Sonar  ──→  Case research summary + citations
+      │
+      ├──→  Claude claude-sonnet-4-6  ──→  4 posts × 4 platforms
+      │
+      └──→  gpt-image-1  ──→  YouTube thumbnail (1536×1024, b64_json)
+      │
+      ▼
+  Web UI — browse, copy, download
+```
+
+---
+
 ## Setup
 
 ### Environment Variables
@@ -69,11 +90,16 @@ The board must have the following columns configured (IDs mapped via env vars ab
 | Status | Status | `MONDAY_COLUMN_STATUS` |
 
 **Status label mapping:**
-- Labels containing `upcoming` or `scheduled` → `upcoming`
-- Labels containing `published`, `done`, or `live` → `published`
-- Anything else → `draft`
 
-The episodes page shows all items that are **not** `published`, sorted ascending by episode number.
+| Monday.com label | Mapped status | Appears on |
+|---|---|---|
+| `Live`, `Live Paid`, `Live *` (any `live …` prefix) | `archived` | `/archive` page |
+| `Ready to Publish`, `Upcoming`, `Scheduled` | `upcoming` | `/episodes` page |
+| Anything else not listed below | `draft` | `/episodes` page |
+| `default`, blank, `Script Draft`, `Script Review`, `Research` | `excluded` | Hidden — not shown anywhere |
+| `published`, `done` (substring match) | `published` | Hidden — not shown anywhere |
+
+The episodes page shows `upcoming` and `draft` items sorted ascending by **publish date** (nulls last). The archive page shows `archived` items sorted descending by publish date.
 
 ### Script Attachments
 
@@ -127,28 +153,62 @@ These are entered in the "Image Generation Guidance" panel on the episode detail
 **API route:** `POST /api/generate/thumbnail`
 **Model:** `gpt-image-1`
 **Size:** `1536x1024` (16:9)
-**Quality:** `high`
 
 Generates a cinematic background image intended for YouTube thumbnails and social media. The image contains **no text** — it is a pure visual background for text overlay in post-production.
 
-#### Image Prompt Strategy
+#### Image Prompt Structure
+
+The prompt is assembled from layered sections in order:
+
+1. **Base framing** — fixed; establishes genre, audience, and episode name
+2. **Style & Mood** — editable via Settings page; controls atmosphere, lighting, and color palette
+3. **Case context** — dynamic; first 200 characters of the Perplexity research summary
+4. **Content rules** — editable via Settings page; controls what to depict/avoid
+5. **Faces clause** — conditional based on reference images (see below)
+6. **Quality clause** — fixed; enforces no gore, 16:9, professional aesthetic
+7. **Episode overrides** — optional Emphasize and Suppress fields from the episode page
+
+#### Image Prompt Strategy (defaults)
 
 - Moody and atmospheric but visually rich — mid-tones with visible texture and detail
 - Accent pinks and magentas used as light sources (glows, neon reflections, spills), not fills
-- Deep purple for shadow and depth
 - Case-specific imagery only — no generic true crime clichés (no chalk outlines, crime scene tape, skulls, etc.)
-- No human faces (unless reference images are provided — see below)
-- No gore, no text, no labels
+- No text, no labels of any kind
+
+#### Faces Clause
+
+The faces clause is determined by which reference images are present:
+
+| Situation | Behavior |
+|---|---|
+| Episode-specific images uploaded | Person(s) in those images are featured prominently — treated as the episode namesake/subject |
+| Only global reference images (hosts) | Hosts may appear naturally in the scene |
+| No reference images | No faces restriction — people may appear if contextually relevant |
 
 #### Reference Images
 
-When host photos or other reference images are present, the pipeline switches from `images.generate` to `images.edit` with `reference_fidelity: 1.0` so the model can incorporate host likeness into the scene.
+When any reference images are present, the pipeline switches from `images.generate` to `images.edit` so the model can incorporate the subject's likeness.
 
-**Global reference folder** (`./reference-images/`): images placed here are loaded on every generation. Intended for host photos. Recommended: 4–5 photos per host with varied angles and lighting.
+**Global reference folder** (`./reference-images/`): images placed here are loaded on every generation. Intended for host photos.
 
-**Per-episode uploads**: the episode detail page has an "Episode Reference Images" uploader. These take priority and fill slots first; global images fill remaining slots. Hard API limit: **16 images total** (global + episode combined).
+**Per-episode uploads**: the episode detail page has an "Episode Reference Images" uploader. Each uploaded image is displayed as a compact card showing a 64×64px preview, filename, original dimensions, and file size. These take priority and fill slots first; global images fill remaining slots. Hard API limit: **16 images total**.
 
-If no reference images are found (folder empty or absent, no uploads), the pipeline falls back to text-only `images.generate` and the "no human faces" constraint is restored.
+If no reference images are found, the pipeline falls back to text-only `images.generate` with `quality: 'high'`.
+
+> **Note:** `images.edit` does not support the `quality` parameter. Only `images.generate` accepts it.
+
+---
+
+## Settings Page (`/settings`)
+
+The Settings page exposes the two editable prompt layers for troubleshooting and experimentation:
+
+| Layer | Default behavior |
+|---|---|
+| **Style & Mood** | Atmospheric/cinematic description, pink/magenta accent lighting guidance |
+| **Content Rules** | Anti-cliché rules, preferred environment types, no-text constraint |
+
+Changes are saved to `localStorage` and applied to all future generations in the browser. A full prompt preview (assembled with placeholders for dynamic sections) is shown at the bottom of the page. "Reset to Defaults" restores the hardcoded values and clears localStorage.
 
 ---
 
@@ -178,8 +238,12 @@ The main action buttons:
 src/
 ├── app/
 │   ├── episodes/
-│   │   ├── page.tsx                  — Episode list page
+│   │   ├── page.tsx                  — Episode list (upcoming + draft, sorted by publish date)
 │   │   └── [id]/page.tsx             — Episode detail page (server component)
+│   ├── archive/
+│   │   └── page.tsx                  — Archive page (live episodes, sorted newest first)
+│   ├── settings/
+│   │   └── page.tsx                  — Prompt layer settings (client component)
 │   └── api/
 │       ├── debug/monday-schema/      — Column ID discovery endpoint
 │       ├── episodes/[id]/script/     — Script text extraction
@@ -202,16 +266,18 @@ src/
 │       ├── ProgressSteps.tsx
 │       └── CopyButton.tsx
 ├── hooks/
-│   └── useEpisodeGeneration.ts       — Client-side state machine for the 3-step pipeline
+│   ├── useEpisodeGeneration.ts       — Client-side state machine for the 3-step pipeline
+│   └── usePromptSettings.ts          — localStorage-backed prompt layer overrides
 ├── lib/
 │   ├── monday/
-│   │   ├── client.ts                 — GraphQL query runner
-│   │   ├── queries.ts                — Board/item/schema GQL queries
-│   │   └── transformers.ts           — MondayItem → Episode mapping
+│   │   ├── client.ts                 — GraphQL query runner + getAllBoardItems (paginated)
+│   │   ├── queries.ts                — Board/item/schema GQL queries (incl. next_items_page)
+│   │   └── transformers.ts           — MondayItem → Episode mapping + status classification
 │   ├── claude/client.ts              — Social post generation (Anthropic SDK)
 │   ├── openai/client.ts              — Image generation (OpenAI SDK, gpt-image-1)
 │   ├── perplexity/client.ts          — Case research (Perplexity sonar)
-│   └── mammoth/parser.ts             — .docx script text extraction
+│   ├── mammoth/parser.ts             — .docx script text extraction
+│   └── promptDefaults.ts             — PromptLayers type + DEFAULT_PROMPT_LAYERS constants
 ├── types/
 │   ├── episode.ts                    — Episode, MondayItem, MondayAsset
 │   ├── generation.ts                 — ResearchResult, SocialPostSet, ThumbnailResult, state types
@@ -245,3 +311,20 @@ Grays are dominant in the UI. Pinks and magenta are used sparingly — only for 
 | Perplexity (sonar) | Case research | Paid API |
 | Anthropic Claude (`claude-sonnet-4-6`) | Social post generation | Free tier |
 | OpenAI (`gpt-image-1`) | Background image generation | Paid (existing plan) |
+
+---
+
+## Known Gotchas
+
+- **Server components must not self-HTTP-fetch** — episode pages call Monday.com lib directly; only the client-side generation hook uses API routes via fetch
+- **Monday.com `ColumnValue` has no `title` field** — only `id`, `type`, `value`, `text`; `title` is only on `Column` objects from the schema query
+- **Monday.com file downloads require the `Authorization` header** — asset URLs are not public
+- **gpt-image-1 always returns `b64_json`** — no `response_format` param needed; requires verified billing on OpenAI account
+- **`images.edit` does not support the `quality` parameter** — only `images.generate` accepts it
+- **Claude may wrap JSON output in markdown fences** — the client strips these before `JSON.parse()`
+- **Perplexity citations** are in `response.citations[]` at the top level, not inside `choices[0].message`
+- **Next.js 15+ `params` is a Promise** — always `await params` in dynamic route handlers
+- **mammoth works best with `.docx`** — advise the team to avoid old binary `.doc` format
+- **Anthropic API ≠ Claude.ai subscription** — separate billing at console.anthropic.com
+- **Monday.com `items_page` defaults to 30 items** regardless of the `limit` parameter on some plans — always use `getAllBoardItems()` (cursor-based pagination) rather than a single `mondayQuery` call for board-wide fetches
+- **Monday.com `next_items_page` cursors expire** — do not cache cursors; always paginate in a single request cycle

@@ -14,18 +14,34 @@ import { ThumbnailPanel } from './ThumbnailPanel';
 const STATUS_MESSAGES: Record<string, string> = {
   researching: 'Researching the case via Perplexity...',
   'generating-social': 'Writing social media posts with Claude...',
-  'generating-thumbnail': 'Generating YouTube thumbnail with DALL-E 3...',
+  'generating-thumbnail': 'Generating YouTube thumbnail with gpt-image-1...',
 };
 
 interface RefImage {
   name: string;
   dataUrl: string;
+  width: number;
+  height: number;
+  size: number;
 }
 
-function readFileAsDataUrl(file: File): Promise<string> {
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function readImageFile(file: File): Promise<RefImage> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      const img = new Image();
+      img.onload = () =>
+        resolve({ name: file.name, dataUrl, width: img.naturalWidth, height: img.naturalHeight, size: file.size });
+      img.onerror = reject;
+      img.src = dataUrl;
+    };
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
@@ -42,9 +58,7 @@ export function GenerationPanel({ episode }: { episode: Episode }) {
 
   const handleImageFiles = useCallback(async (files: FileList | null) => {
     if (!files || files.length === 0) return;
-    const incoming = await Promise.all(
-      Array.from(files).map(async (f) => ({ name: f.name, dataUrl: await readFileAsDataUrl(f) }))
-    );
+    const incoming = await Promise.all(Array.from(files).map(readImageFile));
     setRefImages((prev) => [...prev, ...incoming]);
   }, []);
 
@@ -145,18 +159,23 @@ export function GenerationPanel({ episode }: { episode: Episode }) {
           </div>
 
           {refImages.length > 0 && (
-            <div className="flex flex-wrap gap-2">
+            <div className="space-y-1.5">
               {refImages.map((img, i) => (
-                <div key={i} className="relative group w-14 h-14 shrink-0">
+                <div key={i} className="flex items-center gap-3 rounded bg-slate-800/60 border border-slate-700 p-2">
                   <img
                     src={img.dataUrl}
                     alt={img.name}
-                    className="w-full h-full object-cover rounded border border-slate-700"
+                    className="w-16 h-16 object-cover rounded shrink-0 border border-slate-700"
                   />
+                  <div className="flex-1 min-w-0 space-y-0.5">
+                    <p className="text-sm text-slate-200 truncate" title={img.name}>{img.name}</p>
+                    <p className="text-xs text-slate-500">{img.width} × {img.height} px</p>
+                    <p className="text-xs text-slate-600">{formatBytes(img.size)}</p>
+                  </div>
                   <button
                     type="button"
                     onClick={() => removeRefImage(i)}
-                    className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-slate-900 border border-slate-600 text-slate-400 hover:text-pink-400 hover:border-pink-700 text-xs flex items-center justify-center leading-none transition-colors"
+                    className="shrink-0 text-slate-500 hover:text-pink-400 transition-colors text-lg leading-none px-1"
                     title={`Remove ${img.name}`}
                   >
                     ×
@@ -222,7 +241,7 @@ export function GenerationPanel({ episode }: { episode: Episode }) {
               ? '❌ Failed during: Case Research (Perplexity)'
               : !state.socialPosts
               ? '❌ Failed during: Social Post Generation (Anthropic Claude)'
-              : '❌ Failed during: Thumbnail Generation (OpenAI DALL-E 3)'}
+              : '❌ Failed during: Thumbnail Generation (OpenAI gpt-image-1)'}
           </div>
           <div className="text-red-400 font-mono text-xs break-all">{state.error}</div>
         </div>

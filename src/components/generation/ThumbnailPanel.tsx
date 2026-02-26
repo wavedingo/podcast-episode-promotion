@@ -48,7 +48,7 @@ export function ThumbnailPanel({
       {thumbnail.revisedPrompt && (
         <details className="text-xs text-slate-600">
           <summary className="cursor-pointer hover:text-slate-400 transition-colors">
-            View DALL-E revised prompt
+            View revised prompt
           </summary>
           <p className="mt-2 text-slate-500 leading-relaxed">{thumbnail.revisedPrompt}</p>
         </details>

@@ -28,6 +28,32 @@ export const FETCH_BOARD_ITEMS = `
   }
 `;
 
+export const FETCH_NEXT_BOARD_ITEMS = `
+  query GetNextBoardItems($limit: Int!, $cursor: String!) {
+    next_items_page(limit: $limit, cursor: $cursor) {
+      cursor
+      items {
+        id
+        name
+        column_values {
+          id
+          type
+          value
+          text
+        }
+        assets {
+          id
+          name
+          url
+          file_extension
+          file_size
+          created_at
+        }
+      }
+    }
+  }
+`;
+
 export const FETCH_BOARD_SCHEMA = `
   query GetBoardSchema($boardId: ID!) {
     boards(ids: [$boardId]) {
