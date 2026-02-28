@@ -9,17 +9,16 @@ function getColumnMapping() {
   };
 }
 
-const EXCLUDED_STATUSES = new Set(['', 'default', 'script draft', 'script review', 'research']);
+const EXCLUDED_LABELS = new Set(['', 'default', 'script draft', 'script review', 'research', 'stuck', 'issue']);
+const ARCHIVED_LABELS = new Set(['live', 'live paid']);
 
 function mapStatusLabel(label: string | null | undefined): Episode['status'] {
   if (!label) return 'excluded';
   const lower = label.toLowerCase().trim();
-  if (EXCLUDED_STATUSES.has(lower)) return 'excluded';
-  // archived: 'live', 'live paid', 'live free', etc.
-  if (lower === 'live' || lower.startsWith('live ')) return 'archived';
-  if (lower === 'ready to publish' || lower.includes('upcoming') || lower.includes('scheduled')) return 'upcoming';
-  if (lower.includes('published') || lower.includes('done')) return 'published';
-  return 'draft';
+  if (EXCLUDED_LABELS.has(lower)) return 'excluded';
+  if (ARCHIVED_LABELS.has(lower)) return 'archived';
+  // script complete, recorded, video recorded, post production, review, ready to publish
+  return 'upcoming';
 }
 
 export function transformMondayItem(item: MondayItem): Episode {
@@ -57,5 +56,6 @@ export function transformMondayItem(item: MondayItem): Episode {
     teaserCopy: teaserCol?.text ?? null,
     scriptAsset,
     status: mapStatusLabel(statusCol?.text),
+    rawStatus: statusCol?.text ?? '',
   };
 }

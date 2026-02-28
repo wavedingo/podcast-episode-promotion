@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import type { EpisodeGenerationState } from '@/types/generation';
 import type { Episode } from '@/types/episode';
 import type { PromptLayers } from '@/lib/promptDefaults';
+import { getCache, clearCache } from '@/hooks/useGenerationCache';
 
 const INITIAL_STATE = (episodeId: string): EpisodeGenerationState => ({
   episodeId,
@@ -19,11 +20,30 @@ export function useEpisodeGeneration(episode: Episode) {
     INITIAL_STATE(episode.id)
   );
 
+  // Restore from localStorage cache after mount (client-only, avoids hydration mismatch)
+  useEffect(() => {
+    const cached = getCache(episode.id);
+    if (!cached) return;
+    if (!cached.research && !cached.socialPosts && cached.thumbnails.length === 0) return;
+
+    setState({
+      episodeId: episode.id,
+      research: cached.research,
+      socialPosts: cached.socialPosts,
+      // Expose the last thumbnail so GenerationPanel knows content exists;
+      // GenerationPanel initializes its thumbnails array directly from the cache.
+      thumbnail: cached.thumbnails[cached.thumbnails.length - 1] ?? null,
+      status: 'complete',
+      error: null,
+    });
+  }, [episode.id]);
+
   const reset = useCallback(() => {
+    clearCache(episode.id);
     setState(INITIAL_STATE(episode.id));
   }, [episode.id]);
 
-  const generate = useCallback(async (positivePrompt?: string, negativePrompt?: string, episodeReferenceImages?: string[], promptLayers?: PromptLayers) => {
+  const generate = useCallback(async (positivePrompt?: string, negativePrompt?: string, episodeReferenceImages?: string[], promptLayers?: PromptLayers, hostReferenceImages?: string[]) => {
     setState((prev) => ({ ...prev, status: 'researching', error: null }));
 
     try {
@@ -91,6 +111,7 @@ export function useEpisodeGeneration(episode: Episode) {
           positivePrompt,
           negativePrompt,
           episodeReferenceImages,
+          hostReferenceImages,
           promptLayers,
         }),
       });

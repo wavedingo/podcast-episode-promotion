@@ -1,3 +1,5 @@
+import fs from 'fs';
+import path from 'path';
 import { NextResponse } from 'next/server';
 import { generateThumbnail } from '@/lib/openai/client';
 import type { ThumbnailRequest, ApiResponse } from '@/types/api';
@@ -14,7 +16,22 @@ export async function POST(request: Request) {
       );
     }
 
-    const result = await generateThumbnail(body);
+    const { b64Json, prompt, revisedPrompt } = await generateThumbnail(body);
+
+    // Save PNG to disk so the URL can be cached without hitting localStorage quota
+    const timestamp = Date.now();
+    const dir = path.join(process.cwd(), 'public', 'generated', body.episodeId);
+    fs.mkdirSync(dir, { recursive: true });
+    const filename = `${timestamp}.png`;
+    fs.writeFileSync(path.join(dir, filename), Buffer.from(b64Json, 'base64'));
+
+    const result: ThumbnailResult = {
+      episodeId: body.episodeId,
+      imageUrl: `/generated/${body.episodeId}/${filename}`,
+      prompt,
+      revisedPrompt,
+      generatedAt: new Date().toISOString(),
+    };
 
     return NextResponse.json<ApiResponse<ThumbnailResult>>({
       success: true,

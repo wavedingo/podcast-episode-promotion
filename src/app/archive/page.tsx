@@ -2,6 +2,8 @@ import { EpisodeList } from '@/components/episodes/EpisodeList';
 import { getAllBoardItems } from '@/lib/monday/client';
 import { transformMondayItem } from '@/lib/monday/transformers';
 
+export const revalidate = 60;
+
 async function getArchivedEpisodes() {
   const boardId = process.env.MONDAY_BOARD_ID;
   if (!boardId) return [];

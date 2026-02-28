@@ -2,23 +2,6 @@
 
 import type { ThumbnailResult } from '@/types/generation';
 
-function downloadThumbnail(b64Json: string, episodeName: string) {
-  const byteChars = atob(b64Json);
-  const byteNums = new Array(byteChars.length);
-  for (let i = 0; i < byteChars.length; i++) {
-    byteNums[i] = byteChars.charCodeAt(i);
-  }
-  const byteArray = new Uint8Array(byteNums);
-  const blob = new Blob([byteArray], { type: 'image/png' });
-  const url = URL.createObjectURL(blob);
-
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `thumbnail-${episodeName.replace(/\s+/g, '-').toLowerCase()}.png`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
 export function ThumbnailPanel({
   thumbnail,
   episodeName,
@@ -39,7 +22,7 @@ export function ThumbnailPanel({
       <div className="relative rounded-lg overflow-hidden border border-slate-700">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={`data:image/png;base64,${thumbnail.b64Json}`}
+          src={thumbnail.imageUrl}
           alt={`Thumbnail for ${episodeName}`}
           className="w-full"
         />
@@ -55,12 +38,13 @@ export function ThumbnailPanel({
       )}
 
       <div className="flex gap-3">
-        <button
-          onClick={() => downloadThumbnail(thumbnail.b64Json, episodeName)}
+        <a
+          href={thumbnail.imageUrl}
+          download={`thumbnail-${episodeName.replace(/\s+/g, '-').toLowerCase()}.png`}
           className="px-4 py-2 bg-pink-900/40 border border-pink-800 text-pink-300 rounded text-sm hover:bg-pink-900/60 transition-colors"
         >
           Download PNG
-        </button>
+        </a>
         {onRegenerate && (
           <button
             onClick={onRegenerate}

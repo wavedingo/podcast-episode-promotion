@@ -40,3 +40,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# generated thumbnails (saved to disk, too large for git)
+/public/generated/

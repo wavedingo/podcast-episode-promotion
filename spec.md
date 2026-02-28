@@ -12,7 +12,7 @@ Episodes are managed in **Monday.com**. Opening an episode in this tool triggers
 2. **Social Posts** — Claude writes 4 posts per platform (Instagram, Facebook, Twitter/X, TikTok)
 3. **Background Image** — OpenAI `gpt-image-1` generates a cinematic 16:9 image
 
-All three steps can run as a single "Generate All Content" flow, or the thumbnail can be regenerated independently.
+All three steps can run as a single "Generate All Content" flow, or the thumbnail can be regenerated independently. Generated content is persisted locally so navigating away and back restores all results.
 
 ---
 
@@ -29,10 +29,11 @@ Monday.com board
       │
       ├──→  Claude claude-sonnet-4-6  ──→  4 posts × 4 platforms
       │
-      └──→  gpt-image-1  ──→  YouTube thumbnail (1536×1024, b64_json)
+      └──→  gpt-image-1  ──→  YouTube thumbnail (1536×1024, saved to disk)
       │
       ▼
   Web UI — browse, copy, download
+  localStorage cache — research + social posts + thumbnail URL (survives navigation and server restarts)
 ```
 
 ---
@@ -62,7 +63,7 @@ OPENAI_API_KEY=
 # App config
 NEXT_PUBLIC_BASE_URL=http://localhost:3000
 
-# Optional: folder of reference images for thumbnail generation (PNG/JPG/WebP, max 50MB each)
+# Optional: fallback folder of reference images if no host images are configured in Settings
 REFERENCE_IMAGES_DIR=./reference-images
 ```
 
@@ -89,17 +90,17 @@ The board must have the following columns configured (IDs mapped via env vars ab
 | Teaser Copy | Long Text | `MONDAY_COLUMN_TEASER_COPY` |
 | Status | Status | `MONDAY_COLUMN_STATUS` |
 
-**Status label mapping:**
+**Status label mapping** (exact match, case-insensitive):
 
-| Monday.com label | Mapped status | Appears on |
+| Monday.com label(s) | Internal status | Appears on |
 |---|---|---|
-| `Live`, `Live Paid`, `Live *` (any `live …` prefix) | `archived` | `/archive` page |
-| `Ready to Publish`, `Upcoming`, `Scheduled` | `upcoming` | `/episodes` page |
-| Anything else not listed below | `draft` | `/episodes` page |
-| `default`, blank, `Script Draft`, `Script Review`, `Research` | `excluded` | Hidden — not shown anywhere |
-| `published`, `done` (substring match) | `published` | Hidden — not shown anywhere |
+| Script Complete, Recorded, Video Recorded, Post Production, REVIEW, Ready to Publish | `upcoming` | `/episodes` page |
+| LIVE, Live Paid | `archived` | `/archive` page |
+| `<default>` / blank, Script Draft, Script Review, Research, Stuck, Issue | `excluded` | Hidden — not shown anywhere |
 
-The episodes page shows `upcoming` and `draft` items sorted ascending by **publish date** (nulls last). The archive page shows `archived` items sorted descending by publish date.
+The episode badge on each card displays the **raw Monday.com label** (e.g. "Post Production", "Ready to Publish"), not the internal category. The internal category controls routing and filtering only.
+
+The episodes page shows `upcoming` items sorted ascending by **publish date** (nulls last). The archive page shows `archived` items sorted descending by publish date.
 
 ### Script Attachments
 
@@ -156,6 +157,8 @@ These are entered in the "Image Generation Guidance" panel on the episode detail
 
 Generates a cinematic background image intended for YouTube thumbnails and social media. The image contains **no text** — it is a pure visual background for text overlay in post-production.
 
+The generated PNG is saved to disk at `public/generated/{episodeId}/{timestamp}.png` and served as a static URL. This keeps the localStorage cache small (URL only) and allows the image to persist across server restarts.
+
 #### Image Prompt Structure
 
 The prompt is assembled from layered sections in order:
@@ -182,26 +185,58 @@ The faces clause is determined by which reference images are present:
 | Situation | Behavior |
 |---|---|
 | Episode-specific images uploaded | Person(s) in those images are featured prominently — treated as the episode namesake/subject |
-| Only global reference images (hosts) | Hosts may appear naturally in the scene |
+| Only host images (from Settings) | Hosts may appear naturally in the scene |
 | No reference images | No faces restriction — people may appear if contextually relevant |
 
 #### Reference Images
 
 When any reference images are present, the pipeline switches from `images.generate` to `images.edit` so the model can incorporate the subject's likeness.
 
-**Global reference folder** (`./reference-images/`): images placed here are loaded on every generation. Intended for host photos.
+**Host images (Settings page):** Upload photos of the podcast hosts via the Settings page. Images are compressed to max 768px / JPEG 82% and stored in localStorage. Recommended: 3–6 images (max 8). These are sent on every generation unless overridden by episode-specific images.
 
-**Per-episode uploads**: the episode detail page has an "Episode Reference Images" uploader. Each uploaded image is displayed as a compact card showing a 64×64px preview, filename, original dimensions, and file size. These take priority and fill slots first; global images fill remaining slots. Hard API limit: **16 images total**.
+**Per-episode uploads:** The episode detail page has an "Episode Reference Images" uploader. These take priority and fill reference image slots first; host images fill remaining slots. Hard API limit: **16 images total**.
 
-If no reference images are found, the pipeline falls back to text-only `images.generate` with `quality: 'high'`.
+**Filesystem fallback:** If no host images are configured in Settings, the tool falls back to images in the `REFERENCE_IMAGES_DIR` folder.
+
+If no reference images are found anywhere, the pipeline falls back to text-only `images.generate` with `quality: 'high'`.
 
 > **Note:** `images.edit` does not support the `quality` parameter. Only `images.generate` accepts it.
 
 ---
 
+## Content Persistence
+
+All three generation outputs are saved to the browser's `localStorage` after each generation:
+
+| Data | Storage | Key format |
+|---|---|---|
+| Research result | localStorage | `wc:gen:{episodeId}` |
+| Social posts | localStorage | `wc:gen:{episodeId}` |
+| Thumbnail URL(s) | localStorage | `wc:gen:{episodeId}` |
+| Thumbnail image file | Disk (`public/generated/`) | `{episodeId}/{timestamp}.png` |
+
+Navigating away from an episode and returning restores all previously generated content automatically. The localStorage entry stores only the URL (not the image bytes), so there is no quota risk.
+
+The **"Generated"** badge shown on the episode list card reflects whether any cached content exists for that episode in the current browser.
+
+Clicking **Reset & Regenerate All** clears the localStorage entry for the episode (but does not delete the image files from disk).
+
+---
+
 ## Settings Page (`/settings`)
 
-The Settings page exposes the two editable prompt layers for troubleshooting and experimentation:
+### Host Reference Images
+
+Upload photos of the podcast hosts to use as reference images for thumbnail generation. Images are compressed before storage (max 768px on the longest side, JPEG 82% quality).
+
+- **Ideal count:** 3–6 images
+- **Maximum:** 8 images
+- **Storage:** browser localStorage (`wc:host-images`)
+- **Priority:** overrides the filesystem `REFERENCE_IMAGES_DIR` fallback
+
+### Prompt Layers
+
+The Settings page exposes two editable prompt layers for troubleshooting and experimentation:
 
 | Layer | Default behavior |
 |---|---|
@@ -228,7 +263,9 @@ The main action buttons:
 |---|---|
 | **Generate All Content** | Runs all 3 steps in sequence with current guidance values |
 | **Regenerate** (thumbnail only) | Re-runs only step 3 using the existing research and current guidance/images |
-| **Reset & Regenerate All** | Clears all results and re-runs from step 1 |
+| **Reset & Regenerate All** | Clears cached results and re-runs from step 1 |
+
+Multiple thumbnail versions accumulate on the page (Version 1, Version 2, etc.). Only the latest version shows the Regenerate button.
 
 ---
 
@@ -238,23 +275,24 @@ The main action buttons:
 src/
 ├── app/
 │   ├── episodes/
-│   │   ├── page.tsx                  — Episode list (upcoming + draft, sorted by publish date)
+│   │   ├── page.tsx                  — Episode list (upcoming, sorted by publish date)
 │   │   └── [id]/page.tsx             — Episode detail page (server component)
 │   ├── archive/
 │   │   └── page.tsx                  — Archive page (live episodes, sorted newest first)
 │   ├── settings/
-│   │   └── page.tsx                  — Prompt layer settings (client component)
+│   │   └── page.tsx                  — Host images + prompt layer settings
 │   └── api/
 │       ├── debug/monday-schema/      — Column ID discovery endpoint
 │       ├── episodes/[id]/script/     — Script text extraction
 │       └── generate/
 │           ├── research/             — Perplexity research
 │           ├── social/               — Claude social posts
-│           └── thumbnail/            — OpenAI image generation
+│           └── thumbnail/            — OpenAI image generation + disk save
 ├── components/
 │   ├── episodes/
 │   │   ├── EpisodeList.tsx           — Vertical list layout
-│   │   └── EpisodeCard.tsx           — List row with episode number, title, metadata
+│   │   ├── EpisodeCard.tsx           — List row with episode number, title, metadata
+│   │   └── EpisodeStatusDots.tsx     — "Generated" badge (client component, localStorage-driven)
 │   ├── generation/
 │   │   ├── GenerationPanel.tsx       — Orchestrates UI: guidance inputs, controls, results
 │   │   ├── ResearchSection.tsx       — Displays research summary and key facts
@@ -267,10 +305,12 @@ src/
 │       └── CopyButton.tsx
 ├── hooks/
 │   ├── useEpisodeGeneration.ts       — Client-side state machine for the 3-step pipeline
+│   ├── useGenerationCache.ts         — localStorage read/write/clear for generated content
+│   ├── useHostImages.ts              — localStorage-backed host reference image store
 │   └── usePromptSettings.ts          — localStorage-backed prompt layer overrides
 ├── lib/
 │   ├── monday/
-│   │   ├── client.ts                 — GraphQL query runner + getAllBoardItems (paginated)
+│   │   ├── client.ts                 — GraphQL query runner + getAllBoardItems (paginated, 60s cache)
 │   │   ├── queries.ts                — Board/item/schema GQL queries (incl. next_items_page)
 │   │   └── transformers.ts           — MondayItem → Episode mapping + status classification
 │   ├── claude/client.ts              — Social post generation (Anthropic SDK)
@@ -279,10 +319,12 @@ src/
 │   ├── mammoth/parser.ts             — .docx script text extraction
 │   └── promptDefaults.ts             — PromptLayers type + DEFAULT_PROMPT_LAYERS constants
 ├── types/
-│   ├── episode.ts                    — Episode, MondayItem, MondayAsset
-│   ├── generation.ts                 — ResearchResult, SocialPostSet, ThumbnailResult, state types
+│   ├── episode.ts                    — Episode (status + rawStatus), MondayItem, MondayAsset
+│   ├── generation.ts                 — ResearchResult, SocialPostSet, ThumbnailResult, cache + state types
 │   └── api.ts                        — Request/response interfaces for all API routes
-reference-images/                     — Global host reference images (gitignored recommended)
+public/
+└── generated/                        — Saved thumbnail PNGs (gitignored, organised by episodeId)
+reference-images/                     — Filesystem fallback for host reference images (gitignored recommended)
 ```
 
 ---
@@ -309,7 +351,7 @@ Grays are dominant in the UI. Pinks and magenta are used sparingly — only for 
 |---|---|---|
 | Monday.com | Episode data source | Existing workspace |
 | Perplexity (sonar) | Case research | Paid API |
-| Anthropic Claude (`claude-sonnet-4-6`) | Social post generation | Free tier |
+| Anthropic Claude (`claude-sonnet-4-6`) | Social post generation | Paid plan |
 | OpenAI (`gpt-image-1`) | Background image generation | Paid (existing plan) |
 
 ---
@@ -319,8 +361,11 @@ Grays are dominant in the UI. Pinks and magenta are used sparingly — only for 
 - **Server components must not self-HTTP-fetch** — episode pages call Monday.com lib directly; only the client-side generation hook uses API routes via fetch
 - **Monday.com `ColumnValue` has no `title` field** — only `id`, `type`, `value`, `text`; `title` is only on `Column` objects from the schema query
 - **Monday.com file downloads require the `Authorization` header** — asset URLs are not public
+- **Monday.com API is cached for 60s** — status changes in Monday.com take up to 60 seconds to appear in the tool
 - **gpt-image-1 always returns `b64_json`** — no `response_format` param needed; requires verified billing on OpenAI account
 - **`images.edit` does not support the `quality` parameter** — only `images.generate` accepts it
+- **Thumbnails are saved to `public/generated/` at runtime** — this folder is gitignored; deleting it removes all previously generated images
+- **localStorage `useState` lazy initializers don't work with SSR** — always use `useEffect` to read from localStorage after mount to avoid hydration mismatches
 - **Claude may wrap JSON output in markdown fences** — the client strips these before `JSON.parse()`
 - **Perplexity citations** are in `response.citations[]` at the top level, not inside `choices[0].message`
 - **Next.js 15+ `params` is a Promise** — always `await params` in dynamic route handlers

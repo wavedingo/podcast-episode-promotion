@@ -28,5 +28,6 @@ export interface Episode {
   publishDate: string | null;
   teaserCopy: string | null;
   scriptAsset: MondayAsset | null;
-  status: 'upcoming' | 'published' | 'draft' | 'archived' | 'excluded';
+  status: 'upcoming' | 'archived' | 'excluded';
+  rawStatus: string;
 }

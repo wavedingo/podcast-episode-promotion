@@ -2,7 +2,6 @@ import fs from 'fs';
 import path from 'path';
 import OpenAI, { toFile, type Uploadable } from 'openai';
 import type { ThumbnailRequest } from '@/types/api';
-import type { ThumbnailResult } from '@/types/generation';
 import { DEFAULT_PROMPT_LAYERS, type PromptLayers } from '@/lib/promptDefaults';
 
 function getClient() {
@@ -40,13 +39,17 @@ async function loadGlobalReferenceImages(): Promise<Uploadable[]> {
 }
 
 /** Convert a base64 data URL to an Uploadable file for the OpenAI SDK. */
-async function dataUrlToUploadable(dataUrl: string, index: number): Promise<Uploadable> {
+async function dataUrlToUploadable(
+  dataUrl: string,
+  index: number,
+  prefix = 'episode-ref'
+): Promise<Uploadable> {
   const [header, base64] = dataUrl.split(',');
   const mimeMatch = header.match(/data:([^;]+);base64/);
   const mime = mimeMatch?.[1] ?? 'image/png';
   const ext = mime.split('/')[1] ?? 'png';
   const buffer = Buffer.from(base64, 'base64');
-  return toFile(buffer, `episode-ref-${index}.${ext}`, { type: mime });
+  return toFile(buffer, `${prefix}-${index}.${ext}`, { type: mime });
 }
 
 function buildThumbnailPrompt(
@@ -97,19 +100,26 @@ function buildThumbnailPrompt(
   return lines.join('\n');
 }
 
-export async function generateThumbnail(params: ThumbnailRequest): Promise<ThumbnailResult> {
+export async function generateThumbnail(params: ThumbnailRequest): Promise<{ b64Json: string; prompt: string; revisedPrompt?: string }> {
   const client = getClient();
 
-  // Gather reference images: global folder + per-episode uploads
-  const [globalImages, episodeImages] = await Promise.all([
-    loadGlobalReferenceImages(),
-    Promise.all((params.episodeReferenceImages ?? []).map((url, i) => dataUrlToUploadable(url, i))),
-  ]);
-  // Episode-specific images take priority; global images fill remaining slots up to the API limit of 16
+  // Gather reference images: episode-specific, then host (browser-saved) or filesystem fallback
   const MAX_REFERENCE_IMAGES = 16;
+  const [hostImages, episodeImages] = await Promise.all([
+    // Prefer host images uploaded via Settings; fall back to filesystem folder
+    params.hostReferenceImages?.length
+      ? Promise.all(
+          params.hostReferenceImages.map((url, i) => dataUrlToUploadable(url, i, 'host-ref'))
+        )
+      : loadGlobalReferenceImages(),
+    Promise.all(
+      (params.episodeReferenceImages ?? []).map((url, i) => dataUrlToUploadable(url, i))
+    ),
+  ]);
+  // Episode-specific images take priority; host images fill remaining slots up to the API limit of 16
   const combined = [
     ...episodeImages,
-    ...globalImages.slice(0, Math.max(0, MAX_REFERENCE_IMAGES - episodeImages.length)),
+    ...hostImages.slice(0, Math.max(0, MAX_REFERENCE_IMAGES - episodeImages.length)),
   ];
   const allReferenceImages = combined.slice(0, MAX_REFERENCE_IMAGES);
   const hasReferenceImages = allReferenceImages.length > 0;
@@ -118,7 +128,7 @@ export async function generateThumbnail(params: ThumbnailRequest): Promise<Thumb
     params.episodeName,
     params.researchSummary,
     episodeImages.length > 0,
-    globalImages.length > 0,
+    hostImages.length > 0,
     params.positivePrompt,
     params.negativePrompt,
     params.promptLayers
@@ -155,11 +165,5 @@ export async function generateThumbnail(params: ThumbnailRequest): Promise<Thumb
     revisedPrompt = image.revised_prompt;
   }
 
-  return {
-    episodeId: params.episodeId,
-    b64Json,
-    prompt,
-    revisedPrompt,
-    generatedAt: new Date().toISOString(),
-  };
+  return { b64Json, prompt, revisedPrompt };
 }

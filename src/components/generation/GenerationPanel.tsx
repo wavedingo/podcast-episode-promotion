@@ -1,10 +1,12 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import type { Episode } from '@/types/episode';
-import type { ThumbnailResult } from '@/types/generation';
+import type { ThumbnailResult, GenerationStatus } from '@/types/generation';
 import { useEpisodeGeneration } from '@/hooks/useEpisodeGeneration';
 import { usePromptSettings } from '@/hooks/usePromptSettings';
+import { useHostImages } from '@/hooks/useHostImages';
+import { getCache, saveCache } from '@/hooks/useGenerationCache';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { ProgressSteps } from '@/components/ui/ProgressSteps';
 import { ResearchSection } from './ResearchSection';
@@ -50,11 +52,52 @@ function readImageFile(file: File): Promise<RefImage> {
 export function GenerationPanel({ episode }: { episode: Episode }) {
   const { state, generate, reset } = useEpisodeGeneration(episode);
   const { layers: promptLayers } = usePromptSettings();
+  const { dataUrls: hostImageDataUrls } = useHostImages();
+
+  const [thumbnails, setThumbnails] = useState<ThumbnailResult[]>([]);
+
+  // Seed thumbnails from cache after mount. Lazy useState initializers don't work here
+  // because getCache returns null during SSR, and React reuses that empty state on hydration.
+  useEffect(() => {
+    const cached = getCache(episode.id);
+    if (cached?.thumbnails.length) setThumbnails(cached.thumbnails);
+  }, [episode.id]);
+
   const [regenerating, setRegenerating] = useState(false);
   const [positivePrompt, setPositivePrompt] = useState('');
   const [negativePrompt, setNegativePrompt] = useState('');
   const [refImages, setRefImages] = useState<RefImage[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Track status transitions to distinguish a real new generation from a cache restore.
+  // Cache restore goes idle → complete without passing through generating-thumbnail,
+  // so neither branch fires and the cache-seeded thumbnails stay intact.
+  const prevStatusRef = useRef<GenerationStatus>(state.status);
+  useEffect(() => {
+    const prev = prevStatusRef.current;
+    prevStatusRef.current = state.status;
+
+    if (prev === 'generating-thumbnail' && state.status === 'complete' && state.thumbnail) {
+      // Fresh initial generation just finished — seed with the first version.
+      setThumbnails([state.thumbnail]);
+    } else if (state.status === 'idle' && prev !== 'idle') {
+      // Reset was called — clear the list.
+      setThumbnails([]);
+    }
+  }, [state.status, state.thumbnail]);
+
+  // Persist to cache whenever meaningful data changes (after completion or regeneration).
+  useEffect(() => {
+    if (!state.research) return;
+    if (['researching', 'generating-social', 'generating-thumbnail'].includes(state.status)) return;
+
+    saveCache({
+      episodeId: episode.id,
+      research: state.research,
+      socialPosts: state.socialPosts,
+      thumbnails,
+    });
+  }, [episode.id, state.research, state.socialPosts, state.status, thumbnails]);
 
   const handleImageFiles = useCallback(async (files: FileList | null) => {
     if (!files || files.length === 0) return;
@@ -81,18 +124,18 @@ export function GenerationPanel({ episode }: { episode: Episode }) {
           positivePrompt: positivePrompt || undefined,
           negativePrompt: negativePrompt || undefined,
           episodeReferenceImages: refImageDataUrls.length ? refImageDataUrls : undefined,
+          hostReferenceImages: hostImageDataUrls.length ? hostImageDataUrls : undefined,
           promptLayers,
         }),
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error);
+      setThumbnails((prev) => [...prev, data.data as ThumbnailResult]);
       setRegenerating(false);
-      return data.data as ThumbnailResult;
     } catch {
       setRegenerating(false);
-      return null;
     }
-  }, [episode, state.research, positivePrompt, negativePrompt, refImageDataUrls]);
+  }, [episode, state.research, positivePrompt, negativePrompt, refImageDataUrls, hostImageDataUrls, promptLayers]);
 
   const isLoading = ['researching', 'generating-social', 'generating-thumbnail'].includes(
     state.status
@@ -162,6 +205,7 @@ export function GenerationPanel({ episode }: { episode: Episode }) {
             <div className="space-y-1.5">
               {refImages.map((img, i) => (
                 <div key={i} className="flex items-center gap-3 rounded bg-slate-800/60 border border-slate-700 p-2">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={img.dataUrl}
                     alt={img.name}
@@ -187,7 +231,10 @@ export function GenerationPanel({ episode }: { episode: Episode }) {
 
           {refImages.length === 0 && (
             <p className="text-xs text-slate-600">
-              No episode-specific images. Global reference folder will be used if configured.
+              No episode-specific images.{' '}
+              {hostImageDataUrls.length > 0
+                ? `Host reference images from Settings (${hostImageDataUrls.length}) will be used.`
+                : 'Add host photos in Settings to include likenesses in thumbnails.'}
             </p>
           )}
         </div>
@@ -201,7 +248,8 @@ export function GenerationPanel({ episode }: { episode: Episode }) {
               positivePrompt || undefined,
               negativePrompt || undefined,
               refImageDataUrls.length ? refImageDataUrls : undefined,
-              promptLayers
+              promptLayers,
+              hostImageDataUrls.length ? hostImageDataUrls : undefined,
             )}
             className="px-5 py-2.5 bg-pink-800 hover:bg-pink-700 text-white rounded-lg font-medium transition-colors"
           >
@@ -250,14 +298,19 @@ export function GenerationPanel({ episode }: { episode: Episode }) {
       {/* Results */}
       {state.research && <ResearchSection research={state.research} />}
       {state.socialPosts && <SocialPostsPanel socialPosts={state.socialPosts} />}
-      {state.thumbnail && (
-        <ThumbnailPanel
-          thumbnail={state.thumbnail}
-          episodeName={episode.name}
-          onRegenerate={handleRegenerate}
-          regenerating={regenerating}
-        />
-      )}
+      {thumbnails.map((thumb, i) => (
+        <div key={thumb.generatedAt} className="space-y-2">
+          <p className="text-xs font-semibold uppercase tracking-wider text-slate-600">
+            {i === 0 ? 'Thumbnail — Version 1 (original)' : `Thumbnail — Version ${i + 1}`}
+          </p>
+          <ThumbnailPanel
+            thumbnail={thumb}
+            episodeName={episode.name}
+            onRegenerate={i === thumbnails.length - 1 ? handleRegenerate : undefined}
+            regenerating={i === thumbnails.length - 1 ? regenerating : false}
+          />
+        </div>
+      ))}
     </div>
   );
 }

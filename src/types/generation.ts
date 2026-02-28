@@ -21,10 +21,18 @@ export interface SocialPostSet {
 
 export interface ThumbnailResult {
   episodeId: string;
-  b64Json: string;
+  imageUrl: string;
   prompt: string;
   revisedPrompt?: string;
   generatedAt: string;
+}
+
+export interface GenerationCache {
+  episodeId: string;
+  research: ResearchResult | null;
+  socialPosts: SocialPostSet | null;
+  thumbnails: ThumbnailResult[];
+  savedAt: string;
 }
 
 export type GenerationStatus =

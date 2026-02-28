@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback, useDeferredValue } from 'react';
 import { usePromptSettings } from '@/hooks/usePromptSettings';
+import { useHostImages, MAX_HOST_IMAGES, IDEAL_HOST_IMAGES_MIN, IDEAL_HOST_IMAGES_MAX } from '@/hooks/useHostImages';
 import { DEFAULT_PROMPT_LAYERS, type PromptLayers } from '@/lib/promptDefaults';
 
 function assemblePreview(layers: PromptLayers): string {
@@ -16,10 +17,51 @@ function assemblePreview(layers: PromptLayers): string {
   ].join('\n');
 }
 
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function CountBadge({ count }: { count: number }) {
+  const isNone = count === 0;
+  const isLow = count > 0 && count < IDEAL_HOST_IMAGES_MIN;
+  const isGood = count >= IDEAL_HOST_IMAGES_MIN && count <= IDEAL_HOST_IMAGES_MAX;
+
+  const colorClass = isNone
+    ? 'bg-slate-800 text-slate-500 border-slate-700'
+    : isLow
+    ? 'bg-yellow-900/30 text-yellow-400 border-yellow-800/50'
+    : isGood
+    ? 'bg-green-900/30 text-green-400 border-green-800/50'
+    : 'bg-blue-900/30 text-blue-400 border-blue-800/50';
+
+  const label = isNone
+    ? 'No images saved'
+    : isLow
+    ? 'Add more for better fidelity'
+    : isGood
+    ? 'Good range'
+    : 'Near maximum';
+
+  return (
+    <div className="flex items-center gap-2">
+      <span className={`text-xs px-2 py-0.5 rounded border font-mono ${colorClass}`}>
+        {count} / {MAX_HOST_IMAGES}
+      </span>
+      <span className="text-xs text-slate-600">{label}</span>
+    </div>
+  );
+}
+
 export default function SettingsPage() {
   const { layers, save, reset, isDirty } = usePromptSettings();
   const [draft, setDraft] = useState<PromptLayers>(layers);
   const [saved, setSaved] = useState(false);
+
+  const { images, loaded, addImages, removeImage, clearAll } = useHostImages();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [dragging, setDragging] = useState(false);
 
   // Sync draft when hook loads from localStorage
   useEffect(() => {
@@ -37,11 +79,162 @@ export default function SettingsPage() {
     setDraft(DEFAULT_PROMPT_LAYERS);
   }
 
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setDragging(false);
+      addImages(e.dataTransfer.files);
+    },
+    [addImages]
+  );
+
   const hasChanges =
     draft.styleMood !== layers.styleMood || draft.contentRules !== layers.contentRules;
 
   return (
     <div className="max-w-3xl space-y-10">
+
+      {/* ── Host Reference Images ─────────────────────────────────────── */}
+      <div className="space-y-5">
+        <div>
+          <h1 className="text-xl font-semibold text-slate-100">Host Reference Images</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Photos of the podcast hosts used as reference when generating thumbnails — the model
+            uses these to incorporate the hosts&apos; likenesses into each scene. Upload{' '}
+            <span className="text-slate-400 font-medium">
+              {IDEAL_HOST_IMAGES_MIN}–{IDEAL_HOST_IMAGES_MAX} clear, front-facing portraits
+            </span>{' '}
+            per host. Variety in lighting and angle improves fidelity. Images are saved in your
+            browser.
+          </p>
+        </div>
+
+        {/* Upload controls */}
+        <div className="flex items-center justify-between gap-3">
+          <CountBadge count={images.length} />
+          <div className="flex items-center gap-2">
+            {images.length > 0 && (
+              <button
+                type="button"
+                onClick={clearAll}
+                className="text-xs px-2.5 py-1 rounded border border-slate-800 text-slate-600 hover:border-slate-600 hover:text-slate-400 transition-colors"
+              >
+                Clear all
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={images.length >= MAX_HOST_IMAGES}
+              className="text-xs px-3 py-1.5 rounded border border-slate-700 text-slate-300 hover:border-pink-700 hover:text-pink-400 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              + Add photos
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                addImages(e.target.files ?? []);
+                e.target.value = '';
+              }}
+            />
+          </div>
+        </div>
+
+        {/* Drop zone (shown when no images) */}
+        {loaded && images.length === 0 && (
+          <div
+            onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={handleDrop}
+            onClick={() => fileInputRef.current?.click()}
+            className={`cursor-pointer rounded-lg border-2 border-dashed px-6 py-10 text-center transition-colors select-none ${
+              dragging
+                ? 'border-pink-600 bg-pink-950/20'
+                : 'border-slate-700 hover:border-slate-600 bg-slate-900/30'
+            }`}
+          >
+            <p className="text-sm text-slate-500">
+              Drop photos here or{' '}
+              <span className="text-slate-400 underline underline-offset-2">click to browse</span>
+            </p>
+            <p className="mt-1 text-xs text-slate-600">
+              {IDEAL_HOST_IMAGES_MIN}–{IDEAL_HOST_IMAGES_MAX} portraits recommended · PNG, JPEG, or
+              WebP · max {MAX_HOST_IMAGES} images
+            </p>
+          </div>
+        )}
+
+        {/* Image grid */}
+        {images.length > 0 && (
+          <div
+            onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={handleDrop}
+            className={`rounded-lg border p-3 transition-colors ${
+              dragging ? 'border-pink-700 bg-pink-950/10' : 'border-slate-800 bg-slate-900/30'
+            }`}
+          >
+            <div className="grid grid-cols-4 gap-2 sm:grid-cols-6 md:grid-cols-8">
+              {images.map((img) => (
+                <div
+                  key={img.id}
+                  className="group relative rounded overflow-hidden border border-slate-700 bg-slate-900 aspect-square"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={img.dataUrl}
+                    alt={img.name}
+                    title={`${img.name}\n${img.width}×${img.height} · ${formatBytes(img.sizeBytes)}`}
+                    className="w-full h-full object-cover"
+                  />
+                  {/* Hover overlay with remove button */}
+                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <button
+                      type="button"
+                      onClick={() => removeImage(img.id)}
+                      className="text-white hover:text-pink-400 transition-colors text-xl leading-none font-light"
+                      title={`Remove ${img.name}`}
+                    >
+                      ×
+                    </button>
+                  </div>
+                  {/* Name tooltip strip */}
+                  <div className="absolute bottom-0 left-0 right-0 bg-black/60 px-1 py-0.5 translate-y-full group-hover:translate-y-0 transition-transform">
+                    <p className="text-xs text-slate-300 truncate leading-tight">{img.name}</p>
+                    <p className="text-[10px] text-slate-500 leading-tight">
+                      {formatBytes(img.sizeBytes)}
+                    </p>
+                  </div>
+                </div>
+              ))}
+
+              {/* Add more tile (shown when under max) */}
+              {images.length < MAX_HOST_IMAGES && (
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="aspect-square rounded border-2 border-dashed border-slate-700 hover:border-pink-700 text-slate-700 hover:text-pink-600 transition-colors flex items-center justify-center text-2xl font-light"
+                  title="Add more photos"
+                >
+                  +
+                </button>
+              )}
+            </div>
+
+            {dragging && (
+              <p className="mt-2 text-center text-xs text-pink-400">Drop to add</p>
+            )}
+          </div>
+        )}
+      </div>
+
+      <hr className="border-slate-800" />
+
+      {/* ── Prompt Settings ───────────────────────────────────────────── */}
       <div>
         <h1 className="text-xl font-semibold text-slate-100">Prompt Settings</h1>
         <p className="mt-1 text-sm text-slate-500">

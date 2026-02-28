@@ -32,6 +32,8 @@ export interface ThumbnailRequest {
   negativePrompt?: string;
   /** Base64 data URLs of per-episode reference images (e.g. guest photos) */
   episodeReferenceImages?: string[];
+  /** Base64 data URLs of global host reference images (from settings page) */
+  hostReferenceImages?: string[];
   /** Overrides for the base prompt layers (from settings page) */
   promptLayers?: PromptLayers;
 }

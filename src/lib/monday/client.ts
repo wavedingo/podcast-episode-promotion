@@ -16,7 +16,7 @@ export async function mondayQuery<T>(
       'API-Version': '2024-01',
     },
     body: JSON.stringify({ query, variables }),
-    cache: 'no-store',
+    next: { revalidate: 60 },
   });
 
   if (!response.ok) {

@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import type { Episode } from '@/types/episode';
+import { EpisodeGeneratedBadge } from './EpisodeStatusDots';
 
 function formatDate(dateStr: string | null): string {
   if (!dateStr) return 'No date set';
@@ -7,24 +8,15 @@ function formatDate(dateStr: string | null): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-function statusBadge(status: Episode['status']) {
+function statusBadge(status: Episode['status'], rawStatus: string) {
   const classes: Record<Episode['status'], string> = {
     upcoming: 'bg-purple-900/50 text-purple-300 border-purple-700',
-    draft: 'bg-slate-800 text-slate-400 border-slate-600',
-    published: 'bg-green-900/50 text-green-300 border-green-700',
     archived: 'bg-amber-900/40 text-amber-300 border-amber-700',
     excluded: 'bg-slate-800 text-slate-600 border-slate-700',
   };
-  const labels: Record<Episode['status'], string> = {
-    upcoming: 'Upcoming',
-    draft: 'Draft',
-    published: 'Published',
-    archived: 'Archived',
-    excluded: 'Excluded',
-  };
   return (
     <span className={`text-xs px-2 py-0.5 rounded border ${classes[status]} uppercase tracking-wide`}>
-      {labels[status]}
+      {rawStatus || status}
     </span>
   );
 }
@@ -50,7 +42,8 @@ export function EpisodeCard({ episode }: { episode: Episode }) {
         {/* Main content */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
-            {statusBadge(episode.status)}
+            {statusBadge(episode.status, episode.rawStatus)}
+            <EpisodeGeneratedBadge episodeId={episode.id} />
             <span className="text-xs text-slate-500">{formatDate(episode.publishDate)}</span>
             {episode.scriptAsset && (
               <span className="text-xs text-slate-500">· Script attached</span>

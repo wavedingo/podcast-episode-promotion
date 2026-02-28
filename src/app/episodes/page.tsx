@@ -2,6 +2,8 @@ import { EpisodeList } from '@/components/episodes/EpisodeList';
 import { getAllBoardItems } from '@/lib/monday/client';
 import { transformMondayItem } from '@/lib/monday/transformers';
 
+export const revalidate = 60;
+
 async function getEpisodes() {
   const boardId = process.env.MONDAY_BOARD_ID;
   if (!boardId) return [];
@@ -9,7 +11,7 @@ async function getEpisodes() {
   const items = await getAllBoardItems(boardId);
   return items
     .map(transformMondayItem)
-    .filter((e) => e.status === 'upcoming' || e.status === 'draft')
+    .filter((e) => e.status === 'upcoming')
     .sort((a, b) => {
       if (!a.publishDate && !b.publishDate) return 0;
       if (!a.publishDate) return 1;
