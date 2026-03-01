@@ -6,7 +6,7 @@
 export const COOKIE_NAME = 'wc_session';
 const EXPIRY_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
-function base64urlDecode(s: string): Uint8Array<ArrayBuffer> {
+function base64urlDecode(s: string): Uint8Array {
   const base64 = s.replace(/-/g, '+').replace(/_/g, '/');
   const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=');
   const binary = atob(padded);
@@ -15,14 +15,14 @@ function base64urlDecode(s: string): Uint8Array<ArrayBuffer> {
   return bytes;
 }
 
-function encode(s: string): Uint8Array<ArrayBuffer> {
+function encode(s: string): Uint8Array {
   return new Uint8Array(new TextEncoder().encode(s));
 }
 
 async function getVerifyKey(secret: string): Promise<CryptoKey> {
   return crypto.subtle.importKey(
     'raw',
-    encode(secret),
+    encode(secret).buffer as ArrayBuffer,
     { name: 'HMAC', hash: 'SHA-256' },
     false,
     ['verify']
@@ -44,7 +44,7 @@ export async function verifyToken(token: string): Promise<string | null> {
   const encodedSig = token.slice(dot + 1);
 
   let payload: string;
-  let sigBytes: Uint8Array<ArrayBuffer>;
+  let sigBytes: Uint8Array;
   try {
     payload = new TextDecoder().decode(base64urlDecode(encodedPayload));
     sigBytes = base64urlDecode(encodedSig);
@@ -56,8 +56,8 @@ export async function verifyToken(token: string): Promise<string | null> {
   const valid = await crypto.subtle.verify(
     'HMAC',
     key,
-    sigBytes,
-    encode(payload)
+    sigBytes.buffer as ArrayBuffer,
+    encode(payload).buffer as ArrayBuffer
   );
   if (!valid) return null;
 
