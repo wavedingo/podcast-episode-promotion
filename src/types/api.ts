@@ -1,6 +1,23 @@
 import type { SocialPlatform } from './generation';
 import type { PromptLayers } from '@/lib/promptDefaults';
 
+export interface BufferPublishRequest {
+  episodeId: string;
+  /** Relative or absolute URL of the generated thumbnail; attached to Instagram & Facebook posts. */
+  imageUrl?: string;
+  posts: Array<{
+    platform: SocialPlatform;
+    text: string;
+    scheduledAt: string; // ISO 8601 datetime
+  }>;
+}
+
+export interface BufferPublishResult {
+  sent: number;
+  skipped: number; // platforms without a configured profile ID
+  errors: string[];
+}
+
 export interface ApiResponse<T> {
   data: T | null;
   error: string | null;

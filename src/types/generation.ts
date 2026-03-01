@@ -33,6 +33,7 @@ export interface GenerationCache {
   socialPosts: SocialPostSet | null;
   thumbnails: ThumbnailResult[];
   savedAt: string;
+  scheduledToBufferAt?: string;
 }
 
 export type GenerationStatus =

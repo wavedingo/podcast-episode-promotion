@@ -58,12 +58,14 @@ export function getCachePresence(episodeId: string): {
   research: boolean;
   socialPosts: boolean;
   thumbnails: boolean;
+  scheduled: boolean;
 } {
   const cached = getCache(episodeId);
-  if (!cached) return { research: false, socialPosts: false, thumbnails: false };
+  if (!cached) return { research: false, socialPosts: false, thumbnails: false, scheduled: false };
   return {
     research: cached.research !== null,
     socialPosts: cached.socialPosts !== null,
     thumbnails: cached.thumbnails.length > 0,
+    scheduled: !!cached.scheduledToBufferAt,
   };
 }

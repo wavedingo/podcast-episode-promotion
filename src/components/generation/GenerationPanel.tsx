@@ -297,7 +297,7 @@ export function GenerationPanel({ episode }: { episode: Episode }) {
 
       {/* Results */}
       {state.research && <ResearchSection research={state.research} />}
-      {state.socialPosts && <SocialPostsPanel socialPosts={state.socialPosts} />}
+      {state.socialPosts && <SocialPostsPanel socialPosts={state.socialPosts} episode={episode} />}
       {thumbnails.map((thumb, i) => (
         <div key={thumb.generatedAt} className="space-y-2">
           <p className="text-xs font-semibold uppercase tracking-wider text-slate-600">
