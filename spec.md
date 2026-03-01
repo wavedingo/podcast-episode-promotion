@@ -1,6 +1,6 @@
 # Women & Crime — Episode Promoter: Spec
 
-Internal tool for the **Women & Crime** true crime podcast. Automates episode promotion content across three outputs: case research, social media posts, and a YouTube/social background image. Built with Next.js (App Router), TypeScript, and Tailwind CSS.
+Internal tool for the **Women & Crime** true crime podcast. Automates episode promotion content across three outputs: case research, social media posts, and a YouTube/social background image. Built with Next.js (App Router), TypeScript, and Tailwind CSS. Password-protected with per-user credentials.
 
 ---
 
@@ -13,6 +13,8 @@ Episodes are managed in **Monday.com**. Opening an episode in this tool triggers
 3. **Background Image** — OpenAI `gpt-image-1` generates a cinematic 16:9 image
 
 All three steps can run as a single "Generate All Content" flow, or the thumbnail can be regenerated independently. Generated content is persisted locally so navigating away and back restores all results.
+
+Individual posts can be selected, edited, and scheduled directly to **Buffer.com**. Instagram and Facebook posts automatically include the generated thumbnail image. A "Scheduled" badge appears on the episode card after posts are sent.
 
 ---
 
@@ -32,8 +34,11 @@ Monday.com board
       └──→  gpt-image-1  ──→  YouTube thumbnail (1536×1024, saved to disk)
       │
       ▼
-  Web UI — browse, copy, download
-  localStorage cache — research + social posts + thumbnail URL (survives navigation and server restarts)
+  Web UI — browse, copy, download, select posts for scheduling
+      │
+      ▼
+  Buffer.com GraphQL API  ──→  Scheduled posts (image attached for Instagram/Facebook)
+  localStorage cache — research + social posts + thumbnail URL + scheduledToBufferAt
 ```
 
 ---
@@ -65,6 +70,20 @@ NEXT_PUBLIC_BASE_URL=http://localhost:3000
 
 # Optional: fallback folder of reference images if no host images are configured in Settings
 REFERENCE_IMAGES_DIR=./reference-images
+
+# Buffer.com — run GET /api/debug/buffer-profiles to discover your channel IDs
+BUFFER_ACCESS_TOKEN=
+BUFFER_CHANNEL_INSTAGRAM=
+BUFFER_CHANNEL_FACEBOOK=
+BUFFER_CHANNEL_TWITTER=
+BUFFER_CHANNEL_TIKTOK=
+
+# Auth — generate hashes with: node scripts/generate-password-hash.mjs <username> <password>
+# Format: username:salt:pbkdf2hash  (up to 3 users; unused slots can be left blank)
+SESSION_SECRET=
+AUTH_USER_1=
+AUTH_USER_2=
+AUTH_USER_3=
 ```
 
 ### Discovering Monday.com Column IDs
@@ -204,6 +223,84 @@ If no reference images are found anywhere, the pipeline falls back to text-only 
 
 ---
 
+## Buffer Integration
+
+### Selecting and Scheduling Posts
+
+On the episode detail page, each social post card has a checkbox. Selecting one or more posts reveals the **BufferPublishPanel** below the posts grid. The panel shows:
+
+- Platform badge + post label for each selected post
+- Editable `<textarea>` for the post text
+- Per-post `<input type="datetime-local">` — defaults to the episode's publish date at noon (or tomorrow noon if no publish date is set)
+- × button to deselect a post
+
+Clicking **Schedule to Buffer** sends all selected posts to Buffer via `POST /api/publish/buffer`. On success, the cache is updated with `scheduledToBufferAt` and a **Scheduled** badge appears on the episode card.
+
+### Image Attachment
+
+Instagram and Facebook posts automatically include the episode's most recently generated thumbnail as an attached image. The image URL is resolved to an absolute URL using `NEXT_PUBLIC_BASE_URL` before being sent to Buffer (Buffer must be able to fetch the image from a public URL).
+
+Twitter and TikTok posts are sent as text-only.
+
+### API Routes
+
+| Route | Method | Description |
+|---|---|---|
+| `POST /api/publish/buffer` | POST | Sends selected posts to Buffer; returns `{ sent, skipped, errors }` |
+| `GET /api/debug/buffer-profiles` | GET | Lists all Buffer channels (use to discover channel IDs for env vars) |
+
+### Buffer API
+
+Uses Buffer's GraphQL API (`https://api.bufferapp.com/graphql`). Auth via `Authorization: Bearer TOKEN` header. Posts are created with `schedulingType: automatic, mode: customScheduled` and a `dueAt` timestamp.
+
+### Configuration
+
+Run `GET /api/debug/buffer-profiles` while the server is running to discover your Buffer channel IDs, then set `BUFFER_CHANNEL_*` env vars accordingly.
+
+---
+
+## Authentication
+
+The app is protected by username/password authentication. All routes except `/login` and `/api/auth/` require a valid session cookie.
+
+### How it works
+
+- Sessions use HMAC-SHA256 tokens (30-day expiry) stored in an httpOnly cookie (`wc_session`)
+- Passwords are hashed with PBKDF2-SHA256 (310,000 iterations) — no external auth packages
+- Up to 3 users; each configured via an env var (`AUTH_USER_1`, `AUTH_USER_2`, `AUTH_USER_3`)
+- Each env var contains `username:salt:hash` — generate with the provided script
+
+### Adding users
+
+```bash
+node scripts/generate-password-hash.mjs <username> <password>
+```
+
+Run once per user. Each invocation generates a unique random salt. Copy the output line into `.env.local`.
+
+### Generating SESSION_SECRET
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+### Files
+
+| File | Purpose |
+|---|---|
+| `src/middleware.ts` | Protects all routes; redirects unauthenticated requests to `/login?next=<path>` |
+| `src/lib/auth/session.ts` | Edge-compatible token verify (Web Crypto API) — safe to import in middleware |
+| `src/lib/auth/server.ts` | Node.js-only utilities: password verify (PBKDF2) + token creation (HMAC) |
+| `src/app/login/page.tsx` | Login form; redirects to `?next=` param on success |
+| `src/app/api/auth/login/route.ts` | Validates credentials, sets session cookie |
+| `src/app/api/auth/logout/route.ts` | Clears session cookie |
+| `src/components/auth/LogoutButton.tsx` | "Sign out" button in the nav header |
+| `scripts/generate-password-hash.mjs` | CLI script to generate AUTH_USER_* values |
+
+> **Note:** The `/generated/` path is excluded from auth so Buffer can fetch thumbnail images unauthenticated.
+
+---
+
 ## Content Persistence
 
 All three generation outputs are saved to the browser's `localStorage` after each generation:
@@ -213,11 +310,14 @@ All three generation outputs are saved to the browser's `localStorage` after eac
 | Research result | localStorage | `wc:gen:{episodeId}` |
 | Social posts | localStorage | `wc:gen:{episodeId}` |
 | Thumbnail URL(s) | localStorage | `wc:gen:{episodeId}` |
+| `scheduledToBufferAt` timestamp | localStorage | `wc:gen:{episodeId}` |
 | Thumbnail image file | Disk (`public/generated/`) | `{episodeId}/{timestamp}.png` |
 
 Navigating away from an episode and returning restores all previously generated content automatically. The localStorage entry stores only the URL (not the image bytes), so there is no quota risk.
 
-The **"Generated"** badge shown on the episode list card reflects whether any cached content exists for that episode in the current browser.
+The episode list card shows two badges:
+- **Generated** — any cached content exists for that episode in the current browser
+- **Scheduled** — posts have been sent to Buffer (`scheduledToBufferAt` is set in cache)
 
 Clicking **Reset & Regenerate All** clears the localStorage entry for the episode (but does not delete the image files from disk).
 
@@ -279,26 +379,38 @@ src/
 │   │   └── [id]/page.tsx             — Episode detail page (server component)
 │   ├── archive/
 │   │   └── page.tsx                  — Archive page (live episodes, sorted newest first)
+│   ├── login/
+│   │   └── page.tsx                  — Login form (redirects to ?next= on success)
 │   ├── settings/
 │   │   └── page.tsx                  — Host images + prompt layer settings
 │   └── api/
-│       ├── debug/monday-schema/      — Column ID discovery endpoint
+│       ├── auth/
+│       │   ├── login/                — Sets session cookie after credential verification
+│       │   └── logout/               — Clears session cookie
+│       ├── debug/
+│       │   ├── monday-schema/        — Column ID discovery endpoint
+│       │   └── buffer-profiles/      — Lists Buffer channels (use to find channel IDs)
 │       ├── episodes/[id]/script/     — Script text extraction
+│       ├── publish/
+│       │   └── buffer/               — Sends selected posts to Buffer; attaches image for IG/FB
 │       └── generate/
 │           ├── research/             — Perplexity research
 │           ├── social/               — Claude social posts
 │           └── thumbnail/            — OpenAI image generation + disk save
 ├── components/
+│   ├── auth/
+│   │   └── LogoutButton.tsx          — "Sign out" button in the nav header
 │   ├── episodes/
 │   │   ├── EpisodeList.tsx           — Vertical list layout
 │   │   ├── EpisodeCard.tsx           — List row with episode number, title, metadata
-│   │   └── EpisodeStatusDots.tsx     — "Generated" badge (client component, localStorage-driven)
+│   │   └── EpisodeStatusDots.tsx     — "Generated" + "Scheduled" badges (localStorage-driven)
 │   ├── generation/
 │   │   ├── GenerationPanel.tsx       — Orchestrates UI: guidance inputs, controls, results
 │   │   ├── ResearchSection.tsx       — Displays research summary and key facts
-│   │   ├── SocialPostsPanel.tsx      — Tabbed platform view with copy buttons
+│   │   ├── SocialPostsPanel.tsx      — Tabbed platform view; manages post selection for Buffer
+│   │   ├── BufferPublishPanel.tsx    — Selected posts editor + datetime pickers + schedule button
 │   │   ├── ThumbnailPanel.tsx        — Image display and download
-│   │   └── PostCard.tsx              — Individual post with copy button
+│   │   └── PostCard.tsx              — Individual post with copy + select checkbox
 │   └── ui/
 │       ├── LoadingSpinner.tsx
 │       ├── ProgressSteps.tsx
@@ -309,6 +421,11 @@ src/
 │   ├── useHostImages.ts              — localStorage-backed host reference image store
 │   └── usePromptSettings.ts          — localStorage-backed prompt layer overrides
 ├── lib/
+│   ├── auth/
+│   │   ├── session.ts                — Edge-compatible token verify (Web Crypto API)
+│   │   └── server.ts                 — Node.js password verify (PBKDF2) + token creation (HMAC)
+│   ├── buffer/
+│   │   └── client.ts                 — Buffer GraphQL client: listChannels + createPost
 │   ├── monday/
 │   │   ├── client.ts                 — GraphQL query runner + getAllBoardItems (paginated, 60s cache)
 │   │   ├── queries.ts                — Board/item/schema GQL queries (incl. next_items_page)
@@ -318,6 +435,7 @@ src/
 │   ├── perplexity/client.ts          — Case research (Perplexity sonar)
 │   ├── mammoth/parser.ts             — .docx script text extraction
 │   └── promptDefaults.ts             — PromptLayers type + DEFAULT_PROMPT_LAYERS constants
+├── middleware.ts                     — Auth guard: protects all routes except /login + /api/auth/
 ├── types/
 │   ├── episode.ts                    — Episode (status + rawStatus), MondayItem, MondayAsset
 │   ├── generation.ts                 — ResearchResult, SocialPostSet, ThumbnailResult, cache + state types
@@ -325,6 +443,8 @@ src/
 public/
 └── generated/                        — Saved thumbnail PNGs (gitignored, organised by episodeId)
 reference-images/                     — Filesystem fallback for host reference images (gitignored recommended)
+scripts/
+└── generate-password-hash.mjs        — CLI: generates AUTH_USER_* env var values
 ```
 
 ---
@@ -353,6 +473,7 @@ Grays are dominant in the UI. Pinks and magenta are used sparingly — only for 
 | Perplexity (sonar) | Case research | Paid API |
 | Anthropic Claude (`claude-sonnet-4-6`) | Social post generation | Paid plan |
 | OpenAI (`gpt-image-1`) | Background image generation | Paid (existing plan) |
+| Buffer.com | Social post scheduling | Paid plan |
 
 ---
 
@@ -373,3 +494,9 @@ Grays are dominant in the UI. Pinks and magenta are used sparingly — only for 
 - **Anthropic API ≠ Claude.ai subscription** — separate billing at console.anthropic.com
 - **Monday.com `items_page` defaults to 30 items** regardless of the `limit` parameter on some plans — always use `getAllBoardItems()` (cursor-based pagination) rather than a single `mondayQuery` call for board-wide fetches
 - **Monday.com `next_items_page` cursors expire** — do not cache cursors; always paginate in a single request cycle
+- **Buffer GraphQL uses inlined values** — custom scalar types (IDs, enums, ISO strings) must be inlined with `JSON.stringify()` rather than passed as GraphQL variables, due to Buffer's custom scalar handling
+- **Buffer `mode` enum is `customScheduled`** (not `customSchedule`) — typo in some older docs
+- **Buffer image attachment requires a public URL** — `NEXT_PUBLIC_BASE_URL` must be set to a publicly accessible URL in production; localhost won't work for Instagram/Facebook image posts
+- **`/generated/` is excluded from auth middleware** — Buffer must fetch thumbnail images unauthenticated; the middleware matcher explicitly excludes this path
+- **Auth uses two separate crypto modules** — `session.ts` uses Web Crypto API (`crypto.subtle`) for Edge runtime compatibility in middleware; `server.ts` uses Node.js `crypto` for API routes. Both produce/verify the same token format
+- **TypeScript 5.5+ tightened `Uint8Array` generics** — `Uint8Array` is now `Uint8Array<ArrayBufferLike>` by default; Web Crypto functions require `Uint8Array<ArrayBuffer>`. Use `new Uint8Array(source)` rather than `Uint8Array.from()` when passing to crypto functions

@@ -28,7 +28,7 @@ export async function GET() {
 
     const episodes = rawItems
       .map(transformMondayItem)
-      .filter((e) => e.status !== 'published')
+      .filter((e) => e.status === 'upcoming')
       .sort((a, b) => {
         if (!a.publishDate) return 1;
         if (!b.publishDate) return -1;
