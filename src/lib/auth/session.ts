@@ -15,14 +15,14 @@ function base64urlDecode(s: string): Uint8Array {
   return bytes;
 }
 
-function encode(s: string): Uint8Array {
-  return new Uint8Array(new TextEncoder().encode(s));
+function encode(s: string): ArrayBuffer {
+  return new TextEncoder().encode(s).buffer as ArrayBuffer;
 }
 
 async function getVerifyKey(secret: string): Promise<CryptoKey> {
   return crypto.subtle.importKey(
     'raw',
-    encode(secret).buffer as ArrayBuffer,
+    encode(secret),
     { name: 'HMAC', hash: 'SHA-256' },
     false,
     ['verify']
@@ -57,7 +57,7 @@ export async function verifyToken(token: string): Promise<string | null> {
     'HMAC',
     key,
     sigBytes.buffer as ArrayBuffer,
-    encode(payload).buffer as ArrayBuffer
+    encode(payload)
   );
   if (!valid) return null;
 
