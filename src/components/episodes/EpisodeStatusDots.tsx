@@ -8,9 +8,10 @@ export function EpisodeGeneratedBadge({ episodeId }: { episodeId: string }) {
   const [isScheduled, setIsScheduled] = useState(false);
 
   useEffect(() => {
-    const p = getCachePresence(episodeId);
-    setHasContent(p.research || p.socialPosts || p.thumbnails);
-    setIsScheduled(p.scheduled);
+    getCachePresence(episodeId).then((p) => {
+      setHasContent(p.research || p.socialPosts || p.thumbnails);
+      setIsScheduled(p.scheduled);
+    });
   }, [episodeId]);
 
   if (!hasContent && !isScheduled) return null;

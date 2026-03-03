@@ -58,6 +58,40 @@ export function verifyPassword(username: string, password: string): boolean {
   return timingSafeEqual(computed, expected);
 }
 
+const EXPIRY_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+/** Verifies a session token and returns the username, or null if invalid/expired. */
+export function verifyToken(token: string): string | null {
+  const secret = process.env.SESSION_SECRET;
+  if (!secret) return null;
+
+  const dot = token.lastIndexOf('.');
+  if (dot === -1) return null;
+
+  const encodedPayload = token.slice(0, dot);
+  const encodedSig = token.slice(dot + 1);
+
+  let payload: string;
+  let sigBytes: Buffer;
+  try {
+    payload = Buffer.from(encodedPayload, 'base64url').toString('utf8');
+    sigBytes = Buffer.from(encodedSig, 'base64url');
+  } catch {
+    return null;
+  }
+
+  const expectedSig = createHmac('sha256', secret).update(payload).digest();
+  if (sigBytes.length !== expectedSig.length || !timingSafeEqual(sigBytes, expectedSig)) return null;
+
+  const colonIdx = payload.lastIndexOf(':');
+  if (colonIdx === -1) return null;
+  const username = payload.slice(0, colonIdx);
+  const issuedAt = parseInt(payload.slice(colonIdx + 1), 10);
+  if (isNaN(issuedAt) || Date.now() - issuedAt > EXPIRY_MS) return null;
+
+  return username;
+}
+
 /** Creates a signed session token (base64url(payload).base64url(hmac)). */
 export function createToken(username: string): string {
   const secret = process.env.SESSION_SECRET;

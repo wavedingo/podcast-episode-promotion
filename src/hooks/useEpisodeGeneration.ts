@@ -20,21 +20,22 @@ export function useEpisodeGeneration(episode: Episode) {
     INITIAL_STATE(episode.id)
   );
 
-  // Restore from localStorage cache after mount (client-only, avoids hydration mismatch)
+  // Restore from server cache after mount (client-only, avoids hydration mismatch)
   useEffect(() => {
-    const cached = getCache(episode.id);
-    if (!cached) return;
-    if (!cached.research && !cached.socialPosts && cached.thumbnails.length === 0) return;
+    getCache(episode.id).then((cached) => {
+      if (!cached) return;
+      if (!cached.research && !cached.socialPosts && cached.thumbnails.length === 0) return;
 
-    setState({
-      episodeId: episode.id,
-      research: cached.research,
-      socialPosts: cached.socialPosts,
-      // Expose the last thumbnail so GenerationPanel knows content exists;
-      // GenerationPanel initializes its thumbnails array directly from the cache.
-      thumbnail: cached.thumbnails[cached.thumbnails.length - 1] ?? null,
-      status: 'complete',
-      error: null,
+      setState({
+        episodeId: episode.id,
+        research: cached.research,
+        socialPosts: cached.socialPosts,
+        // Expose the last thumbnail so GenerationPanel knows content exists;
+        // GenerationPanel initializes its thumbnails array directly from the cache.
+        thumbnail: cached.thumbnails[cached.thumbnails.length - 1] ?? null,
+        status: 'complete',
+        error: null,
+      });
     });
   }, [episode.id]);
 

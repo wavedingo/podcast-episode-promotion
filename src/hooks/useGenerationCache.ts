@@ -1,66 +1,43 @@
 import type { GenerationCache } from '@/types/generation';
 
-const KEY_PREFIX = 'wc:gen:';
-
-function cacheKey(episodeId: string): string {
-  return `${KEY_PREFIX}${episodeId}`;
-}
-
-export function getCache(episodeId: string): GenerationCache | null {
-  if (typeof window === 'undefined') return null;
+export async function getCache(episodeId: string): Promise<GenerationCache | null> {
   try {
-    const raw = localStorage.getItem(cacheKey(episodeId));
-    return raw ? (JSON.parse(raw) as GenerationCache) : null;
+    const res = await fetch(`/api/cache/${encodeURIComponent(episodeId)}`);
+    if (!res.ok) return null;
+    return await res.json();
   } catch {
     return null;
   }
 }
 
-export function saveCache(data: Omit<GenerationCache, 'savedAt'>): void {
-  if (typeof window === 'undefined') return;
-  const key = cacheKey(data.episodeId);
+export async function saveCache(data: Omit<GenerationCache, 'savedAt'>): Promise<void> {
   const payload: GenerationCache = { ...data, savedAt: new Date().toISOString() };
-
-  // Attempt 1: save everything
   try {
-    localStorage.setItem(key, JSON.stringify(payload));
-    return;
+    await fetch(`/api/cache/${encodeURIComponent(data.episodeId)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
   } catch {
-    // QuotaExceededError — retry with reduced thumbnails
-  }
-
-  // Attempt 2: keep only the most recent thumbnail
-  try {
-    localStorage.setItem(key, JSON.stringify({ ...payload, thumbnails: payload.thumbnails.slice(-1) }));
-    return;
-  } catch {
-    // Still over quota
-  }
-
-  // Attempt 3: drop all thumbnails, keep text data
-  try {
-    localStorage.setItem(key, JSON.stringify({ ...payload, thumbnails: [] }));
-  } catch {
-    // Give up silently
+    // Non-fatal — UI stays intact even if persistence fails
   }
 }
 
-export function clearCache(episodeId: string): void {
-  if (typeof window === 'undefined') return;
+export async function clearCache(episodeId: string): Promise<void> {
   try {
-    localStorage.removeItem(cacheKey(episodeId));
+    await fetch(`/api/cache/${encodeURIComponent(episodeId)}`, { method: 'DELETE' });
   } catch {
     // ignore
   }
 }
 
-export function getCachePresence(episodeId: string): {
+export async function getCachePresence(episodeId: string): Promise<{
   research: boolean;
   socialPosts: boolean;
   thumbnails: boolean;
   scheduled: boolean;
-} {
-  const cached = getCache(episodeId);
+}> {
+  const cached = await getCache(episodeId);
   if (!cached) return { research: false, socialPosts: false, thumbnails: false, scheduled: false };
   return {
     research: cached.research !== null,

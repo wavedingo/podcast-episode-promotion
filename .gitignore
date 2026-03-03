@@ -43,3 +43,6 @@ next-env.d.ts
 
 # generated thumbnails (saved to disk, too large for git)
 /public/generated/
+
+# server-side generation cache (persists across deployments, not tracked in git)
+/data/

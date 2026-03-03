@@ -56,11 +56,11 @@ export function GenerationPanel({ episode }: { episode: Episode }) {
 
   const [thumbnails, setThumbnails] = useState<ThumbnailResult[]>([]);
 
-  // Seed thumbnails from cache after mount. Lazy useState initializers don't work here
-  // because getCache returns null during SSR, and React reuses that empty state on hydration.
+  // Seed thumbnails from server cache after mount.
   useEffect(() => {
-    const cached = getCache(episode.id);
-    if (cached?.thumbnails.length) setThumbnails(cached.thumbnails);
+    getCache(episode.id).then((cached) => {
+      if (cached?.thumbnails.length) setThumbnails(cached.thumbnails);
+    });
   }, [episode.id]);
 
   const [regenerating, setRegenerating] = useState(false);
@@ -86,7 +86,7 @@ export function GenerationPanel({ episode }: { episode: Episode }) {
     }
   }, [state.status, state.thumbnail]);
 
-  // Persist to cache whenever meaningful data changes (after completion or regeneration).
+  // Persist to server cache whenever meaningful data changes (after completion or regeneration).
   useEffect(() => {
     if (!state.research) return;
     if (['researching', 'generating-social', 'generating-thumbnail'].includes(state.status)) return;
@@ -98,6 +98,8 @@ export function GenerationPanel({ episode }: { episode: Episode }) {
       thumbnails,
     });
   }, [episode.id, state.research, state.socialPosts, state.status, thumbnails]);
+
+  const latestThumbnailUrl = thumbnails.at(-1)?.imageUrl;
 
   const handleImageFiles = useCallback(async (files: FileList | null) => {
     if (!files || files.length === 0) return;
@@ -297,7 +299,7 @@ export function GenerationPanel({ episode }: { episode: Episode }) {
 
       {/* Results */}
       {state.research && <ResearchSection research={state.research} />}
-      {state.socialPosts && <SocialPostsPanel socialPosts={state.socialPosts} episode={episode} />}
+      {state.socialPosts && <SocialPostsPanel socialPosts={state.socialPosts} episode={episode} latestThumbnailUrl={latestThumbnailUrl} />}
       {thumbnails.map((thumb, i) => (
         <div key={thumb.generatedAt} className="space-y-2">
           <p className="text-xs font-semibold uppercase tracking-wider text-slate-600">

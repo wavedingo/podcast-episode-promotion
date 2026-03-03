@@ -1,6 +1,6 @@
 import type { SocialPlatform } from '@/types/generation';
 
-const BUFFER_API_URL = 'https://api.buffer.com';
+const BUFFER_API_URL = 'https://api.buffer.com/graphql';
 
 function getToken(): string {
   const token = process.env.BUFFER_ACCESS_TOKEN;

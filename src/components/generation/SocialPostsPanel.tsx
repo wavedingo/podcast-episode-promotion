@@ -4,6 +4,7 @@ import { useState, useCallback } from 'react';
 import type { SocialPostSet, SocialPlatform } from '@/types/generation';
 import type { Episode } from '@/types/episode';
 import { getCache, saveCache } from '@/hooks/useGenerationCache';
+
 import { PostCard } from './PostCard';
 import { BufferPublishPanel, type SelectedPost } from './BufferPublishPanel';
 
@@ -33,9 +34,11 @@ function defaultScheduledAt(publishDate: string | null): string {
 export function SocialPostsPanel({
   socialPosts,
   episode,
+  latestThumbnailUrl,
 }: {
   socialPosts: SocialPostSet;
   episode: Episode;
+  latestThumbnailUrl?: string;
 }) {
   const [active, setActive] = useState<SocialPlatform>('instagram');
   const [selectedPosts, setSelectedPosts] = useState<Map<string, SelectedPost>>(new Map());
@@ -81,10 +84,10 @@ export function SocialPostsPanel({
     });
   }, []);
 
-  const handleBufferSent = useCallback(() => {
-    const cache = getCache(episode.id);
+  const handleBufferSent = useCallback(async () => {
+    const cache = await getCache(episode.id);
     if (cache) {
-      saveCache({ ...cache, scheduledToBufferAt: new Date().toISOString() });
+      await saveCache({ ...cache, scheduledToBufferAt: new Date().toISOString() });
     }
   }, [episode.id]);
 
@@ -92,9 +95,6 @@ export function SocialPostsPanel({
 
   const countByPlatform = (platform: SocialPlatform) =>
     selectedArray.filter((p) => p.platform === platform).length;
-
-  // Latest generated thumbnail URL — passed to Buffer for Instagram & Facebook posts
-  const thumbnailUrl = getCache(episode.id)?.thumbnails.at(-1)?.imageUrl;
 
   return (
     <div className="space-y-4">
@@ -149,7 +149,7 @@ export function SocialPostsPanel({
         <BufferPublishPanel
           selectedPosts={selectedArray}
           episodeId={episode.id}
-          thumbnailUrl={thumbnailUrl}
+          thumbnailUrl={latestThumbnailUrl}
           onUpdatePost={handleUpdatePost}
           onRemovePost={handleRemovePost}
           onSent={handleBufferSent}
