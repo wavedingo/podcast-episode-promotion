@@ -68,6 +68,11 @@ OPENAI_API_KEY=
 # App config
 NEXT_PUBLIC_BASE_URL=http://localhost:3000
 
+# Optional: absolute path where generated thumbnails are saved.
+# Defaults to <project>/public/generated (served by Next.js automatically).
+# Only set this if you want to serve images from a custom directory via nginx.
+# GENERATED_IMAGES_BASE_DIR=/var/www/generated
+
 # Optional: fallback folder of reference images if no host images are configured in Settings
 REFERENCE_IMAGES_DIR=./reference-images
 
@@ -251,7 +256,7 @@ Twitter and TikTok posts are sent as text-only.
 
 ### Buffer API
 
-Uses Buffer's GraphQL API (`https://api.bufferapp.com/graphql`). Auth via `Authorization: Bearer TOKEN` header. Posts are created with `schedulingType: automatic, mode: customScheduled` and a `dueAt` timestamp.
+Uses Buffer's GraphQL API (`https://api.buffer.com/graphql`). Auth via `Authorization: Bearer TOKEN` header. Posts are created with `schedulingType: automatic, mode: customScheduled` and a `dueAt` timestamp.
 
 ### Configuration
 

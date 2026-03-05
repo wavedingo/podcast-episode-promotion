@@ -39,7 +39,7 @@ export async function POST(request: Request) {
       const imageUrl =
         absoluteImageUrl && IMAGE_PLATFORMS.has(post.platform) ? absoluteImageUrl : undefined;
       try {
-        await createBufferPost({ channelId, text: post.text, scheduledAt: post.scheduledAt, imageUrl });
+        await createBufferPost({ channelId, platform: post.platform, text: post.text, scheduledAt: post.scheduledAt, imageUrl });
         sent++;
       } catch (err) {
         errors.push(`${post.platform}: ${err instanceof Error ? err.message : 'Unknown error'}`);

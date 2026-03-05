@@ -97,11 +97,13 @@ export function getChannelId(platform: SocialPlatform): string | undefined {
 /** Creates a scheduled post in Buffer via the GraphQL API. */
 export async function createBufferPost({
   channelId,
+  platform,
   text,
   scheduledAt,
   imageUrl,
 }: {
   channelId: string;
+  platform: string;
   text: string;
   scheduledAt: string; // ISO 8601 datetime
   imageUrl?: string;   // absolute URL; if provided, attached as an image asset
@@ -110,6 +112,13 @@ export async function createBufferPost({
   // This avoids declaring custom scalar types (ChannelId!, DateTime!, etc.) as variables.
   const assetsFragment = imageUrl
     ? `, assets: { images: [{ url: ${JSON.stringify(imageUrl)} }] }`
+    : '';
+
+  // Instagram and Facebook require a post type in platform-specific metadata.
+  const metadataFragment = platform === 'instagram'
+    ? ', metadata: { instagram: { type: post, shouldShareToFeed: true } }'
+    : platform === 'facebook'
+    ? ', metadata: { facebook: { type: post } }'
     : '';
 
   const result = await gql<{
@@ -123,7 +132,7 @@ export async function createBufferPost({
         text: ${JSON.stringify(text)},
         schedulingType: automatic,
         mode: customScheduled,
-        dueAt: ${JSON.stringify(scheduledAt)}${assetsFragment}
+        dueAt: ${JSON.stringify(scheduledAt)}${metadataFragment}${assetsFragment}
       }) {
         ... on PostActionSuccess {
           post {

@@ -9,7 +9,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "postinstall": "mkdir -p /var/www/generated && chmod 755 /var/www/generated"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
